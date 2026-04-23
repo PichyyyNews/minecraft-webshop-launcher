@@ -4,6 +4,68 @@ const fs = require('fs');
 const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 
+// Magic bytes signatures for file validation
+const MAGIC_BYTES = {
+    jpeg: [0xFF, 0xD8, 0xFF],
+    png: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+    gif: [0x47, 0x49, 0x46, 0x38],
+    webp: [0x52, 0x49, 0x46, 0x46], // RIFF header, needs additional validation
+    ico: [0x00, 0x00, 0x01, 0x00],
+};
+
+// Allowed MIME types (strict)
+const ALLOWED_MIME_TYPES = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/x-icon',
+    'image/vnd.microsoft.icon'
+];
+
+// Allowed extensions
+const ALLOWED_EXTENSIONS = /\.(jpeg|jpg|png|gif|webp|ico)$/i;
+
+/**
+ * Validate file magic bytes to ensure file content matches extension
+ */
+const validateMagicBytes = (buffer, originalname) => {
+    if (!buffer || buffer.length < 8) return false;
+
+    const ext = path.extname(originalname).toLowerCase().replace('.', '');
+
+    switch (ext) {
+        case 'jpg':
+        case 'jpeg':
+            return buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+        case 'png':
+            return MAGIC_BYTES.png.every((byte, i) => buffer[i] === byte);
+        case 'gif':
+            return MAGIC_BYTES.gif.every((byte, i) => buffer[i] === byte);
+        case 'webp':
+            // RIFF....WEBP
+            return buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+                buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+        case 'ico':
+            return buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0x01 && buffer[3] === 0x00;
+        default:
+            return false;
+    }
+};
+
+/**
+ * Sanitize filename to remove dangerous characters
+ */
+const sanitizeFilename = (filename) => {
+    // Remove path separators and dangerous characters
+    return filename
+        .replace(/[\/\\]/g, '')
+        .replace(/\.\./g, '')
+        .replace(/[<>:"|?*]/g, '')
+        .substring(0, 255);
+};
+
 // Use memory storage to process image with sharp before saving
 const storage = multer.memoryStorage();
 
@@ -14,30 +76,31 @@ const ensureDirectoryExists = (dirPath) => {
     }
 };
 
-// Configure upload limits and filters
+// Configure upload limits and filters (STRICT)
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+        files: 10 // Allow multiple fields
+    },
     fileFilter: function (req, file, cb) {
-        const filetypes = /jpeg|jpg|png|gif|webp|svg|ico|gltf|glb|bin/;
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-        // For GLTF/GLB/BIN, mimetype might vary or be application/octet-stream, so rely on extension mostly
-        // but try to check known mimetypes
-        const mimetype = filetypes.test(file.mimetype) ||
-            file.mimetype === 'image/svg+xml' ||
-            file.mimetype === 'image/x-icon' ||
-            file.mimetype === 'image/vnd.microsoft.icon' ||
-            file.mimetype === 'model/gltf+json' ||
-            file.mimetype === 'model/gltf-binary' ||
-            file.mimetype === 'application/octet-stream';
+        // Check extension
+        const extValid = ALLOWED_EXTENSIONS.test(path.extname(file.originalname).toLowerCase());
 
-        if (extname) {
+        // Check MIME type (strict)
+        const mimeValid = ALLOWED_MIME_TYPES.includes(file.mimetype);
+
+        // Sanitize filename
+        file.originalname = sanitizeFilename(file.originalname);
+
+        if (extValid && mimeValid) {
             return cb(null, true);
         } else {
-            cb(new Error('Allowed files: Images, GLTF, GLB, BIN'));
+            cb(new Error('Invalid file type. Only images (JPEG, PNG, GIF, WEBP, ICO) are allowed.'));
         }
     }
 });
+
 
 /**
  * Middleware to process and save image/file
@@ -62,49 +125,45 @@ const processImage = (category) => {
 
             // Reusable helper for processing a single file buffer
             const processFile = async (buffer, originalname) => {
+                // SECURITY: Validate magic bytes
+                if (!validateMagicBytes(buffer, originalname)) {
+                    throw new Error('File content does not match file extension. Possible malicious file detected.');
+                }
+
                 const ext = path.extname(originalname).toLowerCase();
-                const isImage = /jpeg|jpg|png|gif|webp|svg|ico/.test(ext.replace('.', ''));
+                const isImage = /\.?(jpeg|jpg|png|gif|webp|ico)$/i.test(ext);
+
+                if (!isImage) {
+                    throw new Error('Only image files are allowed.');
+                }
 
                 const filename = `${uuidv4()}${ext}`;
                 const absoluteFilepath = path.join(absoluteUploadDir, filename);
                 const relativeFilepath = path.join(relativeUploadDir, filename);
 
-                if (isImage) {
-                    let sharpInstance = sharp(buffer);
-                    let extension = 'webp';
+                let sharpInstance = sharp(buffer);
+                let extension = 'webp';
 
-                    if (category === 'slips') {
-                        sharpInstance = sharpInstance.jpeg({ quality: 80 });
-                        extension = 'jpg';
-                    } else if (ext !== '.svg' && ext !== '.ico') {
-                        sharpInstance = sharpInstance.webp({ quality: 80 });
-                    }
-
-                    // If it's svg or ico, sharp might not be needed or handled differently, 
-                    // but for simplicity, let's just save originals for non-convertible types if any issues arise,
-                    // or assume sharp handles them. 
-                    // For now, let's keep previous logic: convert to webp unless slips (jpg). 
-                    // BUT: SVG/ICO are special. Let's just save them as is if we can, or convert. 
-                    // Actually, let's refine:
-
-                    if (ext === '.svg' || ext === '.ico') {
-                        // Save directly
-                        fs.writeFileSync(absoluteFilepath, buffer);
-                    } else {
-                        // WEBP/JPG Conversion
-                        const finalFilename = `${uuidv4()}.${extension}`;
-                        const finalAbsoluteFilepath = path.join(absoluteUploadDir, finalFilename);
-                        const finalRelativeFilepath = path.join(relativeUploadDir, finalFilename);
-
-                        await sharpInstance.toFile(finalAbsoluteFilepath);
-                        return finalRelativeFilepath.replace(/\\/g, '/');
-                    }
-                } else {
-                    // Non-image (GLTF, GLB, BIN) - Save directly
-                    fs.writeFileSync(absoluteFilepath, buffer);
+                if (category === 'slips') {
+                    sharpInstance = sharpInstance.jpeg({ quality: 80 });
+                    extension = 'jpg';
+                } else if (ext !== '.ico') {
+                    sharpInstance = sharpInstance.webp({ quality: 80 });
                 }
 
-                return relativeFilepath.replace(/\\/g, '/'); // Normalize for DB
+                if (ext === '.ico') {
+                    // Save ICO directly
+                    fs.writeFileSync(absoluteFilepath, buffer);
+                    return relativeFilepath.replace(/\\/g, '/');
+                } else {
+                    // WEBP/JPG Conversion
+                    const finalFilename = `${uuidv4()}.${extension}`;
+                    const finalAbsoluteFilepath = path.join(absoluteUploadDir, finalFilename);
+                    const finalRelativeFilepath = path.join(relativeUploadDir, finalFilename);
+
+                    await sharpInstance.toFile(finalAbsoluteFilepath);
+                    return finalRelativeFilepath.replace(/\\/g, '/');
+                }
             };
 
             // Handle legacy single file 'image'
@@ -113,45 +172,31 @@ const processImage = (category) => {
                 req.file.path = processedPath;
                 req.file.filename = path.basename(processedPath);
                 req.file.destination = absoluteUploadDir;
-                req.body.image = processedPath; // Main image path
+                req.body.image = processedPath;
             }
 
             // Handle multiple files (upload.fields)
             if (req.files) {
-                // Parse blockTextures if it exists as string in body
-                if (req.body.blockTextures && typeof req.body.blockTextures === 'string') {
-                    try {
-                        req.body.blockTextures = JSON.parse(req.body.blockTextures);
-                    } catch (e) {
-                        console.error('Failed to parse blockTextures JSON in middleware', e);
-                    }
-                }
-
                 for (const fieldName in req.files) {
                     const files = req.files[fieldName];
                     if (!files || files.length === 0) continue;
 
-                    const file = files[0]; // Assume maxCount: 1 per field
+                    const file = files[0];
                     const processedPath = await processFile(file.buffer, file.originalname);
 
                     if (fieldName === 'image') {
                         req.body.image = processedPath;
-                    } else if (fieldName === 'gltfModel') {
-                        req.body.gltfModel = processedPath;
-                    } else if (fieldName.startsWith('blockTexture_')) {
-                        const face = fieldName.replace('blockTexture_', '');
-                        if (!req.body.blockTextures || typeof req.body.blockTextures !== 'object') {
-                            req.body.blockTextures = {};
-                        }
-                        req.body.blockTextures[face] = processedPath;
                     }
                 }
             }
 
             next();
         } catch (error) {
-            console.error('Image processing error:', error);
-            next(error);
+            // Return security error
+            return res.status(400).json({
+                message: error.message || 'File processing failed',
+                error: 'SECURITY_VALIDATION_FAILED'
+            });
         }
     };
 };

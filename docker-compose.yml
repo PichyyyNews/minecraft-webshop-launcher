@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  db:
+    image: mongo:6.0
+    container_name: mc-webshop-db
+    restart: always
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - mc-webshop-network
+
+  backend:
+    build:
+      context: ./server
+    container_name: mc-webshop-backend
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - PORT=${BACKEND_PORT:-5000}
+    volumes:
+      - ./server/uploads:/app/uploads
+    depends_on:
+      - db
+    networks:
+      - mc-webshop-network
+
+  frontend:
+    build:
+      context: ./mc-webshop
+      args:
+        - NEXT_PUBLIC_API_URL=/api-backend
+    container_name: mc-webshop-frontend
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - PORT=3000
+    depends_on:
+      - backend
+    networks:
+      - mc-webshop-network
+
+  proxy:
+    build:
+      context: ./nginx
+    container_name: mc-webshop-proxy
+    restart: always
+    ports:
+      - "80:80"
+    env_file:
+      - .env
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - mc-webshop-network
+
+networks:
+  mc-webshop-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:

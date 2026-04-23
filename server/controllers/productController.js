@@ -120,9 +120,9 @@ const updateProduct = async (req, res) => {
                 }
             }
 
-            if (req.file) {
+            if (req.body.image) {
                 // Delete old image if exists
-                if (product.imageUrl) {
+                if (product.imageUrl && product.imageUrl !== req.body.image) {
                     try {
                         let urlPath = product.imageUrl;
                         if (urlPath.startsWith('http')) {
@@ -144,7 +144,10 @@ const updateProduct = async (req, res) => {
                         console.error('Error deleting old image:', err);
                     }
                 }
-                product.imageUrl = `/${req.file.path}`;
+                // Set new image URL
+                let newImageUrl = req.body.image;
+                if (!newImageUrl.startsWith('/')) newImageUrl = `/${newImageUrl}`;
+                product.imageUrl = newImageUrl;
             }
 
             // Handle gltfModel update

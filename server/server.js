@@ -1,8 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const helmet = require('helmet');
 const connectDB = require('./config/db');
-
 const path = require('path');
 
 // Load env vars
@@ -13,13 +13,56 @@ connectDB();
 
 const app = express();
 
-// Body parser
-app.use(express.json());
+// Security middlewares
+const { apiLimiter, authLimiter, uploadLimiter } = require('./middleware/rateLimitMiddleware');
+const { sanitizeInput } = require('./middleware/securityMiddleware');
 
-// Enable CORS
-app.use(cors());
-app.use(express.json()); // Parse JSON bodies
+// Helmet for security headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false // Disable CSP for now as it may break frontend
+}));
 
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost',
+  'http://127.0.0.1',
+  'http://localhost:3000',
+  'http://localhost:5000',
+  process.env.FRONTEND_URL,
+  process.env.API_URL
+].filter(Boolean).map(url => url.replace(/\/$/, ''));
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or same-origin)
+    if (!origin) return callback(null, true);
+
+    // Remove trailing slash from origin for comparison
+    const normalizedOrigin = origin.replace(/\/$/, '');
+
+    // Check if origin is allowed or if we are in development
+    if (allowedOrigins.indexOf(normalizedOrigin) !== -1 || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+
+// Body parser with limits
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Apply sanitization to all requests
+app.use(sanitizeInput);
+
+// Apply rate limiting to all API routes
+app.use('/api/', apiLimiter);
 
 const { upload, processImage } = require('./middleware/uploadMiddleware');
 
@@ -30,9 +73,12 @@ if (!fs.existsSync('uploads')) {
 }
 
 // Serve static files from uploads directory
-// Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/defaults', express.static(path.join(__dirname, '../public/defaults')));
+
+// Apply auth rate limiting to auth routes
+app.use('/api/auth/login', authLimiter);
+app.use('/api/admin/login', authLimiter);
 
 // Mount routers
 app.use('/api/auth', require('./routes/auth'));
@@ -81,8 +127,8 @@ app.get('/api/settings', async (req, res) => {
 
     res.json(settingsMap);
   } catch (error) {
-    console.error('Error fetching settings:', error);
-    res.status(500).send('Server Error');
+    // Don't log errors to console in production
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
@@ -90,7 +136,7 @@ app.get('/api/settings', async (req, res) => {
 app.post('/api/settings', async (req, res) => {
   try {
     const Setting = require('./models/Setting');
-    const updates = req.body; // Expecting { key: value, key2: value2 }
+    const updates = req.body;
 
     for (const [key, value] of Object.entries(updates)) {
       await Setting.findOneAndUpdate(
@@ -102,22 +148,18 @@ app.post('/api/settings', async (req, res) => {
 
     res.json({ message: 'Settings updated successfully' });
   } catch (error) {
-    console.error('Error updating settings:', error);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
 const API_URL = process.env.API_URL || 'http://localhost:5000';
 
-// Helper for settings upload
+// Helper for settings upload - Apply upload rate limit
 const handleSettingUpload = async (req, res, key, message) => {
   if (!req.file) {
-    return res.status(400).send('No file uploaded.');
+    return res.status(400).json({ message: 'No file uploaded.' });
   }
 
-  // Construct relative URL for storage
-  // req.file.path is relative (uploads/settings/2024/01/uuid.webp)
-  // We want to store '/uploads/settings/...' in the DB
   const relativePath = req.file.path.replace(/\\/g, '/');
   const storedUrl = `/${relativePath}`;
 
@@ -128,24 +170,23 @@ const handleSettingUpload = async (req, res, key, message) => {
       { value: storedUrl },
       { upsert: true, new: true }
     );
-    res.send({ message: message, filename: req.file.filename, url: storedUrl });
+    res.json({ message: message, filename: req.file.filename, url: storedUrl });
   } catch (error) {
-    console.error(`Error saving ${key} setting:`, error);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server Error' });
   }
 };
 
 // Logo upload route
-app.post('/api/settings/logo', upload.single('logo'), processImage('settings'), async (req, res) => {
+app.post('/api/settings/logo', uploadLimiter, upload.single('logo'), processImage('settings'), async (req, res) => {
   await handleSettingUpload(req, res, 'logoUrl', 'File uploaded successfully');
 });
 
 // Background upload route
-app.post('/api/settings/background', upload.single('background'), processImage('settings'), async (req, res) => {
+app.post('/api/settings/background', uploadLimiter, upload.single('background'), processImage('settings'), async (req, res) => {
   await handleSettingUpload(req, res, 'backgroundUrl', 'File uploaded successfully');
 });
 
-// Get logo setting (Deprecated in favor of /api/settings, but kept for backward compatibility if needed)
+// Get logo setting
 app.get('/api/settings/logo', async (req, res) => {
   try {
     const Setting = require('./models/Setting');
@@ -153,40 +194,46 @@ app.get('/api/settings/logo', async (req, res) => {
     const defaultLogo = 'https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/logos/Global-Header_MCCB-Logo_300x51.svg';
     res.json({ url: setting ? setting.value : defaultLogo });
   } catch (error) {
-    console.error('Error fetching logo setting:', error);
-    res.status(500).send('Server Error');
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
 // Favicon upload route
-app.post('/api/settings/favicon', upload.single('favicon'), processImage('settings'), async (req, res) => {
+app.post('/api/settings/favicon', uploadLimiter, upload.single('favicon'), processImage('settings'), async (req, res) => {
   await handleSettingUpload(req, res, 'faviconUrl', 'Favicon uploaded successfully');
 });
 
 // Social Image upload route
-app.post('/api/settings/social-image', upload.single('socialImage'), processImage('settings'), async (req, res) => {
+app.post('/api/settings/social-image', uploadLimiter, upload.single('socialImage'), processImage('settings'), async (req, res) => {
   await handleSettingUpload(req, res, 'socialImageUrl', 'Social image uploaded successfully');
 });
 
 // Payment QR upload route
-app.post('/api/settings/payment-qr', upload.single('paymentQr'), processImage('settings'), async (req, res) => {
+app.post('/api/settings/payment-qr', uploadLimiter, upload.single('paymentQr'), processImage('settings'), async (req, res) => {
   await handleSettingUpload(req, res, 'paymentQrUrl', 'Payment QR uploaded successfully');
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  // Don't expose internal errors
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ message: 'CORS error', error: 'FORBIDDEN' });
+  }
+  res.status(500).json({ message: 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(
-  PORT,
-  () => {
+const server = app.listen(PORT, () => {
+  // Minimal server startup log
+  if (process.env.NODE_ENV !== 'production') {
     console.log(`Server running on port ${PORT}`);
-    console.log(`Using API_URL: ${API_URL}`);
   }
-);
+});
 
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections silently in production
 process.on('unhandledRejection', (err, promise) => {
-  console.error(`Error: ${err.message}`);
-  console.error(err.stack);
-  // Don't close server & exit process, just log it
-  // server.close(() => process.exit(1));
+  if (process.env.NODE_ENV !== 'production') {
+    console.error(`Error: ${err.message}`);
+  }
 });
