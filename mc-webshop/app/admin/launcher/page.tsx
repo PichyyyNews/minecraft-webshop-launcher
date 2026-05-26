@@ -559,12 +559,14 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
-    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', file: File) => {
+    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', files: File[]) => {
         const token = localStorage.getItem('adminToken');
         if (!token) throw new Error('Missing admin token');
 
         const formData = new FormData();
-        formData.append('file', file);
+        for (let i = 0; i < files.length; i++) {
+            formData.append('file', files[i]);
+        }
         formData.append('minecraftVersion', config.minecraftVersion);
         formData.append('loader', config.loaderType);
 
@@ -586,11 +588,7 @@ export default function AdminLauncherPage() {
             throw new Error(errorData.message || 'Failed to upload preset file');
         }
 
-        const data = await res.json();
-        if (Array.isArray(data)) {
-            return data[0] as LauncherMod;
-        }
-        return data as LauncherMod;
+        return await res.json() as LauncherMod[];
     };
 
     const handleCustomModUpload = async (files: FileList | File[] | null) => {
@@ -606,18 +604,20 @@ export default function AdminLauncherPage() {
         let successCount = 0;
         let failCount = 0;
         const total = fileList.length;
+        const BATCH_SIZE = 10;
 
         try {
-            for (let i = 0; i < total; i++) {
-                const file = fileList[i];
-                setModUploadProgressText(`Uploading (${i + 1}/${total})...`);
+            for (let i = 0; i < total; i += BATCH_SIZE) {
+                const batch = fileList.slice(i, i + BATCH_SIZE);
+                const batchEnd = Math.min(i + BATCH_SIZE, total);
+                setModUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})...`);
                 try {
-                    const uploadedMod = await uploadCustomPresetFile('mod', file);
-                    addMod(uploadedMod);
-                    successCount++;
+                    const uploadedMods = await uploadCustomPresetFile('mod', batch);
+                    uploadedMods.forEach(mod => addMod(mod));
+                    successCount += batch.length;
                 } catch (error) {
-                    console.error(`Failed to upload ${file.name}:`, error);
-                    failCount++;
+                    console.error(`Failed to upload batch starting at ${i + 1}:`, error);
+                    failCount += batch.length;
                 }
             }
 
@@ -645,18 +645,20 @@ export default function AdminLauncherPage() {
         let successCount = 0;
         let failCount = 0;
         const total = fileList.length;
+        const BATCH_SIZE = 10;
 
         try {
-            for (let i = 0; i < total; i++) {
-                const file = fileList[i];
-                setPackUploadProgressText(`Uploading (${i + 1}/${total})...`);
+            for (let i = 0; i < total; i += BATCH_SIZE) {
+                const batch = fileList.slice(i, i + BATCH_SIZE);
+                const batchEnd = Math.min(i + BATCH_SIZE, total);
+                setPackUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})...`);
                 try {
-                    const uploadedResourcePack = await uploadCustomPresetFile('resourcePack', file);
-                    addResourcePack(uploadedResourcePack);
-                    successCount++;
+                    const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', batch);
+                    uploadedResourcePacks.forEach(pack => addResourcePack(pack));
+                    successCount += batch.length;
                 } catch (error) {
-                    console.error(`Failed to upload ${file.name}:`, error);
-                    failCount++;
+                    console.error(`Failed to upload batch starting at ${i + 1}:`, error);
+                    failCount += batch.length;
                 }
             }
 
