@@ -227,6 +227,88 @@ fn get_launcher_status() -> LauncherStatus {
     }
 }
 
+fn check_java_executable(cmd: &str) -> bool {
+    Command::new(cmd)
+        .arg("-version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn find_java_path() -> String {
+    // 1. Check if 'java' is in PATH and works
+    if check_java_executable("java") {
+        return "java".to_string();
+    }
+
+    // 2. Look in environment variables
+    if let Ok(java_home) = std::env::var("JAVA_HOME") {
+        let ext = if cfg!(windows) { "java.exe" } else { "java" };
+        let path = Path::new(&java_home).join("bin").join(ext);
+        if path.exists() {
+            return path.to_string_lossy().to_string();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Common Windows paths
+        let common_paths = vec![
+            "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
+            "C:\\Program Files\\Java\\jdk-17\\bin\\java.exe",
+            "C:\\Program Files\\Eclipse Foundation\\jdk-21.0.2.13-hotspot\\bin\\java.exe",
+            "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.2.13-hotspot\\bin\\java.exe",
+        ];
+
+        for path in common_paths {
+            if Path::new(path).exists() {
+                return path.to_string();
+            }
+        }
+
+        // Dynamic check in Program Files
+        let scan_roots = vec![
+            "C:\\Program Files\\Java",
+            "C:\\Program Files\\Eclipse Adoptium",
+            "C:\\Program Files\\Eclipse Foundation",
+            "C:\\Program Files\\AdoptOpenJDK",
+        ];
+
+        for root in scan_roots {
+            if let Ok(entries) = fs::read_dir(root) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path().join("bin").join("java.exe");
+                    if path.exists() {
+                        return path.to_string_lossy().to_string();
+                    }
+                }
+            }
+        }
+
+        // Minecraft Launcher bundled Java
+        let app_data = std::env::var("APPDATA").unwrap_or_default();
+        let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
+        
+        let mc_paths = vec![
+            format!("{}\\.minecraft\\runtime\\java-runtime-delta\\windows-x64\\java-runtime-delta\\bin\\java.exe", app_data),
+            format!("{}\\.minecraft\\runtime\\java-runtime-gamma\\windows-x64\\java-runtime-gamma\\bin\\java.exe", app_data),
+            format!("{}\\Packages\\Microsoft.429482752F352_8wekyb3d8bbwe\\LocalCache\\Local\\runtime\\java-runtime-delta\\windows-x64\\java-runtime-delta\\bin\\java.exe", local_app_data),
+            "C:\\Program Files (x86)\\Minecraft Launcher\\runtime\\java-runtime-delta\\windows-x64\\java-runtime-delta\\bin\\java.exe".to_string(),
+            "C:\\Program Files (x86)\\Minecraft Launcher\\runtime\\java-runtime-gamma\\windows-x64\\java-runtime-gamma\\bin\\java.exe".to_string(),
+        ];
+
+        for path in mc_paths {
+            if !path.is_empty() && Path::new(&path).exists() {
+                return path;
+            }
+        }
+    }
+
+    "java".to_string()
+}
+
 fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
     let _ = app.emit(
         "launch-progress",
@@ -580,7 +662,7 @@ fn run_forge_processors(
         writeln!(processor_log, "mainClass: {main_class}").map_err(|error| error.to_string())?;
         writeln!(processor_log, "args: {}", args.join(" ")).map_err(|error| error.to_string())?;
 
-        let output = Command::new("java")
+        let output = Command::new(&find_java_path())
             .arg("-cp")
             .arg(classpath)
             .arg(main_class)
@@ -1449,7 +1531,7 @@ async fn prepare_and_launch(
         .map_err(|error| error.to_string())?;
     let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
 
-    let mut child = Command::new("java")
+    let mut child = Command::new(&find_java_path())
         .args(jvm_args)
         .arg(main_class)
         .args(loader_game_args)
