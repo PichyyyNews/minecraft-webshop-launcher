@@ -8,6 +8,13 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 1420,
     strictPort: true,
+    proxy: {
+      "/api-backend": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-backend/, ""),
+      },
+    },
     watch: {
       ignored: ["**/src-tauri/**"],
     },

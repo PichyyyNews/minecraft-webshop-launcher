@@ -60,9 +60,7 @@ const getBaseApiUrl = () => {
     return import.meta.env.VITE_LAUNCHER_API_URL;
   }
   if (typeof window !== "undefined" && window.location.protocol.startsWith("http")) {
-    if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-      return "/api-backend";
-    }
+    return "/api-backend";
   }
   return "http://localhost:5000";
 };
