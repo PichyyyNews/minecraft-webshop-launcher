@@ -642,13 +642,12 @@ export default function AdminLauncherPage() {
         let successCount = 0;
         let failCount = 0;
         const total = fileList.length;
-        const BATCH_SIZE = 10;
+        const BATCH_SIZE = 1;
 
         try {
             for (let i = 0; i < total; i += BATCH_SIZE) {
                 const batch = fileList.slice(i, i + BATCH_SIZE);
-                const batchEnd = Math.min(i + BATCH_SIZE, total);
-                setModUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})... (Success: ${successCount})`);
+                setModUploadProgressText(`Uploading ${i + 1}/${total}... (Success: ${successCount})`);
                 try {
                     const uploadedMods = await uploadCustomPresetFile('mod', batch);
                     addMods(uploadedMods);
@@ -683,13 +682,12 @@ export default function AdminLauncherPage() {
         let successCount = 0;
         let failCount = 0;
         const total = fileList.length;
-        const BATCH_SIZE = 10;
+        const BATCH_SIZE = 1;
 
         try {
             for (let i = 0; i < total; i += BATCH_SIZE) {
                 const batch = fileList.slice(i, i + BATCH_SIZE);
-                const batchEnd = Math.min(i + BATCH_SIZE, total);
-                setPackUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})... (Success: ${successCount})`);
+                setPackUploadProgressText(`Uploading ${i + 1}/${total}... (Success: ${successCount})`);
                 try {
                     const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', batch);
                     addResourcePacks(uploadedResourcePacks);
