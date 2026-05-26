@@ -597,36 +597,61 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
-    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', files: File[]) => {
-        const token = localStorage.getItem('adminToken');
-        if (!token) throw new Error('Missing admin token');
-
-        const formData = new FormData();
-        for (let i = 0; i < files.length; i++) {
-            formData.append('file', files[i]);
-        }
-        formData.append('minecraftVersion', config.minecraftVersion);
-        formData.append('loader', config.loaderType);
-
-        const res = await fetch(`${API_URL}/api/admin/launcher/preset-files/${type}`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-            body: formData,
-        });
-
-        if (!res.ok) {
-            const errorData = await res.json().catch(() => ({}));
-            if (res.status === 401) {
-                localStorage.removeItem('adminToken');
-                router.push('/admin/login');
-                throw new Error('Admin session expired. Please log in again before uploading.');
+    const uploadCustomPresetFile = (type: 'mod' | 'resourcePack', files: File[], onProgress?: (percent: number) => void): Promise<LauncherMod[]> => {
+        return new Promise((resolve, reject) => {
+            const token = localStorage.getItem('adminToken');
+            if (!token) {
+                reject(new Error('Missing admin token'));
+                return;
             }
-            throw new Error(errorData.message || 'Failed to upload preset file');
-        }
 
-        return await res.json() as LauncherMod[];
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('file', files[i]);
+            }
+            formData.append('minecraftVersion', config.minecraftVersion);
+            formData.append('loader', config.loaderType);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${API_URL}/api/admin/launcher/preset-files/${type}`);
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+            if (xhr.upload && onProgress) {
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        const percentComplete = Math.round((event.loaded / event.total) * 100);
+                        onProgress(percentComplete);
+                    }
+                };
+            }
+
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        resolve(data);
+                    } catch (e) {
+                        reject(new Error('Invalid JSON response'));
+                    }
+                } else {
+                    try {
+                        const errorData = JSON.parse(xhr.responseText);
+                        if (xhr.status === 401) {
+                            localStorage.removeItem('adminToken');
+                            router.push('/admin/login');
+                            reject(new Error('Admin session expired. Please log in again before uploading.'));
+                        } else {
+                            reject(new Error(errorData.message || 'Failed to upload preset file'));
+                        }
+                    } catch (e) {
+                        reject(new Error('Failed to upload preset file'));
+                    }
+                }
+            };
+
+            xhr.onerror = () => reject(new Error('Network error during upload'));
+            xhr.send(formData);
+        });
     };
 
     const handleCustomModUpload = async (files: FileList | File[] | null) => {
@@ -647,9 +672,11 @@ export default function AdminLauncherPage() {
         try {
             for (let i = 0; i < total; i += BATCH_SIZE) {
                 const batch = fileList.slice(i, i + BATCH_SIZE);
-                setModUploadProgressText(`Uploading ${i + 1}/${total}... (Success: ${successCount})`);
+                setModUploadProgressText(`Uploading ${i + 1}/${total}... 0% (Success: ${successCount})`);
                 try {
-                    const uploadedMods = await uploadCustomPresetFile('mod', batch);
+                    const uploadedMods = await uploadCustomPresetFile('mod', batch, (percent) => {
+                        setModUploadProgressText(`Uploading ${i + 1}/${total}... ${percent}% (Success: ${successCount})`);
+                    });
                     addMods(uploadedMods);
                     successCount += batch.length;
                 } catch (error) {
@@ -687,9 +714,11 @@ export default function AdminLauncherPage() {
         try {
             for (let i = 0; i < total; i += BATCH_SIZE) {
                 const batch = fileList.slice(i, i + BATCH_SIZE);
-                setPackUploadProgressText(`Uploading ${i + 1}/${total}... (Success: ${successCount})`);
+                setPackUploadProgressText(`Uploading ${i + 1}/${total}... 0% (Success: ${successCount})`);
                 try {
-                    const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', batch);
+                    const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', batch, (percent) => {
+                        setPackUploadProgressText(`Uploading ${i + 1}/${total}... ${percent}% (Success: ${successCount})`);
+                    });
                     addResourcePacks(uploadedResourcePacks);
                     successCount += batch.length;
                 } catch (error) {
