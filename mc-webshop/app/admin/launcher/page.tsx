@@ -472,6 +472,25 @@ export default function AdminLauncherPage() {
         });
     };
 
+    const addMods = (newMods: LauncherMod[]) => {
+        if (newMods.length === 0) return;
+        setConfig(prev => {
+            const filteredNewMods = newMods.filter(
+                newMod => !prev.mods.some(existingMod => existingMod.projectId === newMod.projectId)
+            );
+            if (filteredNewMods.length === 0) return prev;
+            const mods = [...prev.mods, ...filteredNewMods];
+            setPresetCache(cache => ({
+                ...cache,
+                [getPresetKey(prev.minecraftVersion, prev.loaderType)]: {
+                    ...getCurrentPresetSnapshot(),
+                    mods,
+                },
+            }));
+            return { ...prev, mods };
+        });
+    };
+
     const removeMod = (projectId: string) => {
         setConfig(prev => {
             const mods = prev.mods.filter(mod => mod.projectId !== projectId);
@@ -490,6 +509,25 @@ export default function AdminLauncherPage() {
         setConfig(prev => {
             if (prev.resourcePacks.some(item => item.projectId === resourcePack.projectId)) return prev;
             const resourcePacks = [...prev.resourcePacks, resourcePack];
+            setPresetCache(cache => ({
+                ...cache,
+                [getPresetKey(prev.minecraftVersion, prev.loaderType)]: {
+                    ...getCurrentPresetSnapshot(),
+                    resourcePacks,
+                },
+            }));
+            return { ...prev, resourcePacks };
+        });
+    };
+
+    const addResourcePacks = (newResourcePacks: LauncherMod[]) => {
+        if (newResourcePacks.length === 0) return;
+        setConfig(prev => {
+            const filteredNewPacks = newResourcePacks.filter(
+                newPack => !prev.resourcePacks.some(existingPack => existingPack.projectId === newPack.projectId)
+            );
+            if (filteredNewPacks.length === 0) return prev;
+            const resourcePacks = [...prev.resourcePacks, ...filteredNewPacks];
             setPresetCache(cache => ({
                 ...cache,
                 [getPresetKey(prev.minecraftVersion, prev.loaderType)]: {
@@ -610,10 +648,10 @@ export default function AdminLauncherPage() {
             for (let i = 0; i < total; i += BATCH_SIZE) {
                 const batch = fileList.slice(i, i + BATCH_SIZE);
                 const batchEnd = Math.min(i + BATCH_SIZE, total);
-                setModUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})...`);
+                setModUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})... (Success: ${successCount})`);
                 try {
                     const uploadedMods = await uploadCustomPresetFile('mod', batch);
-                    uploadedMods.forEach(mod => addMod(mod));
+                    addMods(uploadedMods);
                     successCount += batch.length;
                 } catch (error) {
                     console.error(`Failed to upload batch starting at ${i + 1}:`, error);
@@ -651,10 +689,10 @@ export default function AdminLauncherPage() {
             for (let i = 0; i < total; i += BATCH_SIZE) {
                 const batch = fileList.slice(i, i + BATCH_SIZE);
                 const batchEnd = Math.min(i + BATCH_SIZE, total);
-                setPackUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})...`);
+                setPackUploadProgressText(`Uploading (${i + 1}-${batchEnd}/${total})... (Success: ${successCount})`);
                 try {
                     const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', batch);
-                    uploadedResourcePacks.forEach(pack => addResourcePack(pack));
+                    addResourcePacks(uploadedResourcePacks);
                     successCount += batch.length;
                 } catch (error) {
                     console.error(`Failed to upload batch starting at ${i + 1}:`, error);
