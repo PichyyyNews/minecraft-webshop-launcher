@@ -51,7 +51,7 @@ const launcherFileUpload = multer({
     },
 });
 
-router.post('/launcher/files/:type', protect, admin, uploadLimiter, launcherFileUpload.single('file'), uploadLauncherFile);
-router.post('/launcher/preset-files/:type', protect, admin, uploadLimiter, launcherFileUpload.single('file'), uploadLauncherPresetFile);
+router.post('/launcher/files/:type', protect, admin, launcherFileUpload.single('file'), uploadLauncherFile);
+router.post('/launcher/preset-files/:type', protect, admin, launcherFileUpload.array('file'), uploadLauncherPresetFile);
 
 module.exports = router;

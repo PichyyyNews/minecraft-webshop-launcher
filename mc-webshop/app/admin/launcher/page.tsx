@@ -557,12 +557,14 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
-    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', file: File) => {
+    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', files: FileList | File[]) => {
         const token = localStorage.getItem('adminToken');
         if (!token) throw new Error('Missing admin token');
 
         const formData = new FormData();
-        formData.append('file', file);
+        for (let i = 0; i < files.length; i++) {
+            formData.append('file', files[i]);
+        }
         formData.append('minecraftVersion', config.minecraftVersion);
         formData.append('loader', config.loaderType);
 
@@ -584,11 +586,11 @@ export default function AdminLauncherPage() {
             throw new Error(errorData.message || 'Failed to upload preset file');
         }
 
-        return await res.json() as LauncherMod;
+        return await res.json() as LauncherMod[];
     };
 
-    const handleCustomModUpload = async (file: File | null) => {
-        if (!file) return;
+    const handleCustomModUpload = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
         if (config.installType !== 'modded' || !config.loaderType || config.loaderType === 'Vanilla') {
             showModal('Select modded preset', 'Choose Minecraft version and mod loader before uploading custom mods.', 'warning');
             return;
@@ -596,17 +598,17 @@ export default function AdminLauncherPage() {
 
         setCustomModUploading(true);
         try {
-            const uploadedMod = await uploadCustomPresetFile('mod', file);
-            addMod(uploadedMod);
+            const uploadedMods = await uploadCustomPresetFile('mod', files);
+            uploadedMods.forEach(mod => addMod(mod));
         } catch (error) {
-            showModal('Error', error instanceof Error ? error.message : 'Failed to upload custom mod', 'error');
+            showModal('Error', error instanceof Error ? error.message : 'Failed to upload custom mods', 'error');
         } finally {
             setCustomModUploading(false);
         }
     };
 
-    const handleCustomResourcePackUpload = async (file: File | null) => {
-        if (!file) return;
+    const handleCustomResourcePackUpload = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
         if (!config.minecraftVersion) {
             showModal('Select Minecraft version', 'Choose Minecraft version before uploading custom resource packs.', 'warning');
             return;
@@ -614,10 +616,10 @@ export default function AdminLauncherPage() {
 
         setCustomResourcePackUploading(true);
         try {
-            const uploadedResourcePack = await uploadCustomPresetFile('resourcePack', file);
-            addResourcePack(uploadedResourcePack);
+            const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', files);
+            uploadedResourcePacks.forEach(pack => addResourcePack(pack));
         } catch (error) {
-            showModal('Error', error instanceof Error ? error.message : 'Failed to upload custom resource pack', 'error');
+            showModal('Error', error instanceof Error ? error.message : 'Failed to upload custom resource packs', 'error');
         } finally {
             setCustomResourcePackUploading(false);
         }
@@ -1029,9 +1031,10 @@ export default function AdminLauncherPage() {
                                                 type="file"
                                                 accept=".jar"
                                                 className="hidden"
+                                                multiple
                                                 disabled={customModUploading}
                                                 onChange={(event) => {
-                                                    handleCustomModUpload(event.target.files?.[0] || null);
+                                                    handleCustomModUpload(event.target.files);
                                                     event.target.value = '';
                                                 }}
                                             />
@@ -1180,9 +1183,10 @@ export default function AdminLauncherPage() {
                                             type="file"
                                             accept=".zip"
                                             className="hidden"
+                                            multiple
                                             disabled={customResourcePackUploading}
                                             onChange={(event) => {
-                                                handleCustomResourcePackUpload(event.target.files?.[0] || null);
+                                                handleCustomResourcePackUpload(event.target.files);
                                                 event.target.value = '';
                                             }}
                                         />

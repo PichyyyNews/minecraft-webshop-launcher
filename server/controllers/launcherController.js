@@ -298,8 +298,9 @@ const uploadLauncherFile = async (req, res) => {
 };
 
 const uploadLauncherPresetFile = async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ message: 'No preset file uploaded.' });
+    const files = req.files || (req.file ? [req.file] : []);
+    if (files.length === 0) {
+        return res.status(400).json({ message: 'No preset files uploaded.' });
     }
 
     const type = req.params.type === 'resourcePack' ? 'resourcePack' : 'mod';
@@ -314,27 +315,31 @@ const uploadLauncherPresetFile = async (req, res) => {
         return res.status(400).json({ message: 'Mod loader is required for custom mods.' });
     }
 
-    const fileUrl = `/uploads/launcher/${req.file.filename}`;
-    const originalName = path.basename(req.file.originalname || req.file.filename);
-    const title = originalName.replace(/\.[^/.]+$/, '') || req.file.filename;
-    const projectId = `custom-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const results = files.map((file, index) => {
+        const fileUrl = `/uploads/launcher/${file.filename}`;
+        const originalName = path.basename(file.originalname || file.filename);
+        const title = originalName.replace(/\.[^/.]+$/, '') || file.filename;
+        const projectId = `custom-${type}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
 
-    res.json({
-        projectId,
-        slug: projectId,
-        title,
-        description: type === 'mod' ? 'Custom uploaded mod' : 'Custom uploaded resource pack',
-        iconUrl: '',
-        author: 'Admin upload',
-        minecraftVersion,
-        loader: type === 'mod' ? normalizeLoader(loader) : 'resourcepack',
-        versionId: projectId,
-        versionNumber: 'custom',
-        fileName: req.file.filename,
-        fileUrl,
-        fileSize: req.file.size || 0,
-        sha1: '',
+        return {
+            projectId,
+            slug: projectId,
+            title,
+            description: type === 'mod' ? 'Custom uploaded mod' : 'Custom uploaded resource pack',
+            iconUrl: '',
+            author: 'Admin upload',
+            minecraftVersion,
+            loader: type === 'mod' ? normalizeLoader(loader) : 'resourcepack',
+            versionId: projectId,
+            versionNumber: 'custom',
+            fileName: file.filename,
+            fileUrl,
+            fileSize: file.size || 0,
+            sha1: '',
+        };
     });
+
+    res.json(results);
 };
 
 const getLauncherContent = async (req, res) => {
