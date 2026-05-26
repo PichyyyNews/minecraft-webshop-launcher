@@ -238,12 +238,7 @@ fn check_java_executable(cmd: &str) -> bool {
 }
 
 fn find_java_path() -> String {
-    // 1. Check if 'java' is in PATH and works
-    if check_java_executable("java") {
-        return "java".to_string();
-    }
-
-    // 2. Look in environment variables
+    // 1. Look in environment variables (trust explicitly set JAVA_HOME)
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
         let ext = if cfg!(windows) { "java.exe" } else { "java" };
         let path = Path::new(&java_home).join("bin").join(ext);
@@ -254,7 +249,7 @@ fn find_java_path() -> String {
 
     #[cfg(target_os = "windows")]
     {
-        // Common Windows paths
+        // 2. Prioritize modern JDK paths
         let common_paths = vec![
             "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe",
             "C:\\Program Files\\Java\\jdk-17\\bin\\java.exe",
@@ -268,7 +263,7 @@ fn find_java_path() -> String {
             }
         }
 
-        // Dynamic check in Program Files
+        // 3. Scan Program Files dynamically for modern JDK/JRE
         let scan_roots = vec![
             "C:\\Program Files\\Java",
             "C:\\Program Files\\Eclipse Adoptium",
@@ -278,16 +273,27 @@ fn find_java_path() -> String {
 
         for root in scan_roots {
             if let Ok(entries) = fs::read_dir(root) {
+                let mut paths = Vec::new();
                 for entry in entries.filter_map(Result::ok) {
-                    let path = entry.path().join("bin").join("java.exe");
-                    if path.exists() {
-                        return path.to_string_lossy().to_string();
+                    paths.push(entry.path());
+                }
+                // Sort descending so jdk-21 is checked before jdk-17, which is checked before jdk-8
+                paths.sort_by(|a, b| b.cmp(a));
+
+                for path in paths {
+                    let java_exe = path.join("bin").join("java.exe");
+                    if java_exe.exists() {
+                        let path_str = java_exe.to_string_lossy().to_string();
+                        // Ignore Java 8/1.8 folders if we can
+                        if !path_str.contains("jre1.8") && !path_str.contains("jdk1.8") {
+                            return path_str;
+                        }
                     }
                 }
             }
         }
 
-        // Minecraft Launcher bundled Java
+        // 4. Minecraft Launcher bundled Java (usually Java 17 or 21)
         let app_data = std::env::var("APPDATA").unwrap_or_default();
         let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
         
@@ -304,6 +310,11 @@ fn find_java_path() -> String {
                 return path;
             }
         }
+    }
+
+    // 5. Fallback to 'java' command in PATH if it works
+    if check_java_executable("java") {
+        return "java".to_string();
     }
 
     "java".to_string()
