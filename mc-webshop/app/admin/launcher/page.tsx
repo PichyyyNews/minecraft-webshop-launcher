@@ -593,8 +593,10 @@ export default function AdminLauncherPage() {
         return data as LauncherMod;
     };
 
-    const handleCustomModUpload = async (files: FileList | null) => {
-        if (!files || files.length === 0) return;
+    const handleCustomModUpload = async (files: FileList | File[] | null) => {
+        if (!files) return;
+        const fileList = Array.from(files);
+        if (fileList.length === 0) return;
         if (config.installType !== 'modded' || !config.loaderType || config.loaderType === 'Vanilla') {
             showModal('Select modded preset', 'Choose Minecraft version and mod loader before uploading custom mods.', 'warning');
             return;
@@ -603,11 +605,11 @@ export default function AdminLauncherPage() {
         setCustomModUploading(true);
         let successCount = 0;
         let failCount = 0;
-        const total = files.length;
+        const total = fileList.length;
 
         try {
             for (let i = 0; i < total; i++) {
-                const file = files[i];
+                const file = fileList[i];
                 setModUploadProgressText(`Uploading (${i + 1}/${total})...`);
                 try {
                     const uploadedMod = await uploadCustomPresetFile('mod', file);
@@ -630,8 +632,10 @@ export default function AdminLauncherPage() {
         }
     };
 
-    const handleCustomResourcePackUpload = async (files: FileList | null) => {
-        if (!files || files.length === 0) return;
+    const handleCustomResourcePackUpload = async (files: FileList | File[] | null) => {
+        if (!files) return;
+        const fileList = Array.from(files);
+        if (fileList.length === 0) return;
         if (!config.minecraftVersion) {
             showModal('Select Minecraft version', 'Choose Minecraft version before uploading custom resource packs.', 'warning');
             return;
@@ -640,11 +644,11 @@ export default function AdminLauncherPage() {
         setCustomResourcePackUploading(true);
         let successCount = 0;
         let failCount = 0;
-        const total = files.length;
+        const total = fileList.length;
 
         try {
             for (let i = 0; i < total; i++) {
-                const file = files[i];
+                const file = fileList[i];
                 setPackUploadProgressText(`Uploading (${i + 1}/${total})...`);
                 try {
                     const uploadedResourcePack = await uploadCustomPresetFile('resourcePack', file);
