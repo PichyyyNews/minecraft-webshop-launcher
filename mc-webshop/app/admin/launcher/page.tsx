@@ -184,6 +184,8 @@ export default function AdminLauncherPage() {
     const [resourcePackCategory, setResourcePackCategory] = useState('');
     const [customModUploading, setCustomModUploading] = useState(false);
     const [customResourcePackUploading, setCustomResourcePackUploading] = useState(false);
+    const [modUploadProgressText, setModUploadProgressText] = useState('');
+    const [packUploadProgressText, setPackUploadProgressText] = useState('');
     const [presetCache, setPresetCache] = useState<Record<string, PresetSnapshot>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -557,14 +559,12 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
-    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', files: FileList | File[]) => {
+    const uploadCustomPresetFile = async (type: 'mod' | 'resourcePack', file: File) => {
         const token = localStorage.getItem('adminToken');
         if (!token) throw new Error('Missing admin token');
 
         const formData = new FormData();
-        for (let i = 0; i < files.length; i++) {
-            formData.append('file', files[i]);
-        }
+        formData.append('file', file);
         formData.append('minecraftVersion', config.minecraftVersion);
         formData.append('loader', config.loaderType);
 
@@ -586,7 +586,11 @@ export default function AdminLauncherPage() {
             throw new Error(errorData.message || 'Failed to upload preset file');
         }
 
-        return await res.json() as LauncherMod[];
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            return data[0] as LauncherMod;
+        }
+        return data as LauncherMod;
     };
 
     const handleCustomModUpload = async (files: FileList | null) => {
@@ -597,13 +601,32 @@ export default function AdminLauncherPage() {
         }
 
         setCustomModUploading(true);
+        let successCount = 0;
+        let failCount = 0;
+        const total = files.length;
+
         try {
-            const uploadedMods = await uploadCustomPresetFile('mod', files);
-            uploadedMods.forEach(mod => addMod(mod));
+            for (let i = 0; i < total; i++) {
+                const file = files[i];
+                setModUploadProgressText(`Uploading (${i + 1}/${total})...`);
+                try {
+                    const uploadedMod = await uploadCustomPresetFile('mod', file);
+                    addMod(uploadedMod);
+                    successCount++;
+                } catch (error) {
+                    console.error(`Failed to upload ${file.name}:`, error);
+                    failCount++;
+                }
+            }
+
+            if (failCount > 0) {
+                showModal('Upload finished with warnings', `Successfully uploaded ${successCount} mods. Failed to upload ${failCount} mods.`, 'warning');
+            }
         } catch (error) {
-            showModal('Error', error instanceof Error ? error.message : 'Failed to upload custom mods', 'error');
+            showModal('Error', error instanceof Error ? error.message : 'Failed to upload mods', 'error');
         } finally {
             setCustomModUploading(false);
+            setModUploadProgressText('');
         }
     };
 
@@ -615,13 +638,32 @@ export default function AdminLauncherPage() {
         }
 
         setCustomResourcePackUploading(true);
+        let successCount = 0;
+        let failCount = 0;
+        const total = files.length;
+
         try {
-            const uploadedResourcePacks = await uploadCustomPresetFile('resourcePack', files);
-            uploadedResourcePacks.forEach(pack => addResourcePack(pack));
+            for (let i = 0; i < total; i++) {
+                const file = files[i];
+                setPackUploadProgressText(`Uploading (${i + 1}/${total})...`);
+                try {
+                    const uploadedResourcePack = await uploadCustomPresetFile('resourcePack', file);
+                    addResourcePack(uploadedResourcePack);
+                    successCount++;
+                } catch (error) {
+                    console.error(`Failed to upload ${file.name}:`, error);
+                    failCount++;
+                }
+            }
+
+            if (failCount > 0) {
+                showModal('Upload finished with warnings', `Successfully uploaded ${successCount} resource packs. Failed to upload ${failCount} resource packs.`, 'warning');
+            }
         } catch (error) {
-            showModal('Error', error instanceof Error ? error.message : 'Failed to upload custom resource packs', 'error');
+            showModal('Error', error instanceof Error ? error.message : 'Failed to upload resource packs', 'error');
         } finally {
             setCustomResourcePackUploading(false);
+            setPackUploadProgressText('');
         }
     };
 
@@ -1026,7 +1068,7 @@ export default function AdminLauncherPage() {
                                         </div>
                                         <label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/15 ${customModUploading ? 'pointer-events-none opacity-50' : ''}`}>
                                             <Upload className="w-4 h-4" />
-                                            {customModUploading ? 'Uploading...' : 'Upload .jar'}
+                                            {customModUploading ? (modUploadProgressText || 'Uploading...') : 'Upload .jar'}
                                             <input
                                                 type="file"
                                                 accept=".jar"
@@ -1178,7 +1220,7 @@ export default function AdminLauncherPage() {
                                     </div>
                                     <label className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/15 ${customResourcePackUploading ? 'pointer-events-none opacity-50' : ''}`}>
                                         <Upload className="w-4 h-4" />
-                                        {customResourcePackUploading ? 'Uploading...' : 'Upload .zip'}
+                                        {customResourcePackUploading ? (packUploadProgressText || 'Uploading...') : 'Upload .zip'}
                                         <input
                                             type="file"
                                             accept=".zip"
