@@ -227,23 +227,85 @@ fn get_launcher_status() -> LauncherStatus {
     }
 }
 
-fn check_java_executable(cmd: &str) -> bool {
-    Command::new(cmd)
+fn check_java_version(cmd: &str) -> Option<u32> {
+    let output = Command::new(cmd)
         .arg("-version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .ok()?;
+    
+    let stderr_str = String::from_utf8_lossy(&output.stderr);
+    let stdout_str = String::from_utf8_lossy(&output.stdout);
+    let version_str = if stderr_str.is_empty() {
+        stdout_str.to_string()
+    } else {
+        stderr_str.to_string()
+    };
+
+    parse_java_version(&version_str)
+}
+
+fn parse_java_version(version_str: &str) -> Option<u32> {
+    // Attempt parsing with double quotes (standard java -version)
+    if let Some(first_quote) = version_str.find('"') {
+        let after_first = &version_str[first_quote + 1..];
+        if let Some(second_quote) = after_first.find('"') {
+            let version_val = &after_first[..second_quote];
+            let parts: Vec<&str> = version_val.split('.').collect();
+            if !parts.is_empty() {
+                if parts[0] == "1" && parts.len() > 1 {
+                    if let Ok(v) = parts[1].parse::<u32>() {
+                        return Some(v);
+                    }
+                } else {
+                    if let Ok(v) = parts[0].parse::<u32>() {
+                        return Some(v);
+                    }
+                }
+            }
+        }
+    }
+
+    // Backup search for version string in words
+    for line in version_str.lines() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        for (i, word) in words.iter().enumerate() {
+            if (*word == "version" || *word == "openjdk" || *word == "java") && i + 1 < words.len() {
+                let ver = words[i + 1].trim_matches('"');
+                let parts: Vec<&str> = ver.split('.').collect();
+                if !parts.is_empty() {
+                    if parts[0] == "1" && parts.len() > 1 {
+                        if let Ok(v) = parts[1].parse::<u32>() {
+                            return Some(v);
+                        }
+                    } else {
+                        if let Ok(v) = parts[0].parse::<u32>() {
+                            return Some(v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn check_java_is_compatible(path: &str) -> bool {
+    check_java_version(path)
+        .map(|v| v >= 17)
         .unwrap_or(false)
 }
 
-fn find_java_path() -> String {
+fn find_java_path() -> Option<String> {
     // 1. Look in environment variables (trust explicitly set JAVA_HOME)
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
         let ext = if cfg!(windows) { "java.exe" } else { "java" };
         let path = Path::new(&java_home).join("bin").join(ext);
-        if path.exists() {
-            return path.to_string_lossy().to_string();
+        let path_str = path.to_string_lossy().to_string();
+        if path.exists() && check_java_is_compatible(&path_str) {
+            return Some(path_str);
         }
     }
 
@@ -258,8 +320,8 @@ fn find_java_path() -> String {
         ];
 
         for path in common_paths {
-            if Path::new(path).exists() {
-                return path.to_string();
+            if Path::new(path).exists() && check_java_is_compatible(path) {
+                return Some(path.to_string());
             }
         }
 
@@ -284,9 +346,8 @@ fn find_java_path() -> String {
                     let java_exe = path.join("bin").join("java.exe");
                     if java_exe.exists() {
                         let path_str = java_exe.to_string_lossy().to_string();
-                        // Ignore Java 8/1.8 folders if we can
-                        if !path_str.contains("jre1.8") && !path_str.contains("jdk1.8") {
-                            return path_str;
+                        if check_java_is_compatible(&path_str) {
+                            return Some(path_str);
                         }
                     }
                 }
@@ -306,18 +367,76 @@ fn find_java_path() -> String {
         ];
 
         for path in mc_paths {
-            if !path.is_empty() && Path::new(&path).exists() {
-                return path;
+            if !path.is_empty() && Path::new(&path).exists() && check_java_is_compatible(&path) {
+                return Some(path);
             }
         }
     }
 
-    // 5. Fallback to 'java' command in PATH if it works
-    if check_java_executable("java") {
-        return "java".to_string();
+    // 5. Fallback to 'java' command in PATH if it is compatible
+    if check_java_is_compatible("java") {
+        return Some("java".to_string());
     }
 
-    "java".to_string()
+    None
+}
+
+async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
+    let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let jre_dir = app_data.join("game").join("runtime-java21");
+    let java_exe = jre_dir.join("jdk-21.0.2+13-jre").join("bin").join("java.exe");
+    
+    if java_exe.exists() {
+        return Ok(java_exe.to_string_lossy().to_string());
+    }
+
+    emit_progress(app, "java-download", "Downloading Java 21 (Required)...", 0);
+    
+    let client = reqwest::Client::new();
+    let zip_url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.2%2B13/OpenJDK21U-jre_x64_windows_hotspot_21.0.2_13.zip";
+    let zip_path = app_data.join("game").join("java21.zip");
+
+    // Download zip file
+    download_to_replace(&client, zip_url, &zip_path).await?;
+    
+    emit_progress(app, "java-extract", "Extracting Java 21...", 50);
+    
+    // Extract zip file
+    let file = File::open(&zip_path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let outpath = jre_dir.join(file.name());
+        
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                fs::create_dir_all(p).map_err(|e| e.to_string())?;
+            }
+            let mut outfile = File::create(&outpath).map_err(|e| e.to_string())?;
+            io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+        }
+    }
+    
+    // Clean up zip
+    let _ = fs::remove_file(zip_path);
+
+    if java_exe.exists() {
+        Ok(java_exe.to_string_lossy().to_string())
+    } else {
+        Err("Failed to locate java.exe after extraction".to_string())
+    }
+}
+
+async fn get_or_download_java_path(app: &AppHandle) -> Result<String, String> {
+    if let Some(path) = find_java_path() {
+        return Ok(path);
+    }
+    
+    // Download Java 21 if no compatible version is found
+    download_and_extract_java(app).await
 }
 
 fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
@@ -590,6 +709,7 @@ fn run_forge_processors(
     game_dir: &Path,
     minecraft_version: &str,
     client_jar_path: &Path,
+    java_path: &str,
 ) -> Result<(), String> {
     let processor_log_path = game_dir.join("forge-processors.log");
     let mut processor_log = File::create(&processor_log_path).map_err(|error| error.to_string())?;
@@ -673,7 +793,7 @@ fn run_forge_processors(
         writeln!(processor_log, "mainClass: {main_class}").map_err(|error| error.to_string())?;
         writeln!(processor_log, "args: {}", args.join(" ")).map_err(|error| error.to_string())?;
 
-        let output = Command::new(&find_java_path())
+        let output = Command::new(java_path)
             .arg("-cp")
             .arg(classpath)
             .arg(main_class)
@@ -1098,6 +1218,8 @@ async fn prepare_and_launch(
 
     fs::create_dir_all(&game_dir).map_err(|error| error.to_string())?;
 
+    let java_path = get_or_download_java_path(&app).await?;
+
     emit_progress(&app, "metadata", "Loading Minecraft metadata", 5);
     let vanilla_metadata = fetch_vanilla_metadata(&client, &config.minecraft_version).await?;
     let loader_profile = fetch_loader_profile(&client, &config, &installers_dir).await?;
@@ -1247,6 +1369,7 @@ async fn prepare_and_launch(
                 &game_dir,
                 &config.minecraft_version,
                 &client_jar_path,
+                &java_path,
             )?;
 
             for library in libraries.iter().filter(|library| {
@@ -1542,7 +1665,7 @@ async fn prepare_and_launch(
         .map_err(|error| error.to_string())?;
     let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
 
-    let mut child = Command::new(&find_java_path())
+    let mut child = Command::new(&java_path)
         .args(jvm_args)
         .arg(main_class)
         .args(loader_game_args)
