@@ -35,6 +35,8 @@ const allowedOrigins = [
   'http://localhost:5000',
   'http://localhost:1420',
   'tauri://localhost',
+  'http://tauri.localhost',
+  'https://tauri.localhost',
   process.env.FRONTEND_URL,
   process.env.API_URL,
   process.env.LAUNCHER_URL
