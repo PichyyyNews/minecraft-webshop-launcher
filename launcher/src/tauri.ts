@@ -123,7 +123,9 @@ export async function getLauncherStatus(): Promise<LauncherStatus> {
 }
 
 export async function getLauncherConfig(): Promise<LauncherConfig> {
-  const response = await fetch(`${apiUrl}/api/launcher/config`);
+  const response = await fetch(`${apiUrl}/api/launcher/config?_t=${Date.now()}`, {
+    cache: "no-store"
+  });
 
   if (!response.ok) {
     throw new Error("Failed to load launcher config");
@@ -137,7 +139,9 @@ export async function getLauncherConfig(): Promise<LauncherConfig> {
 }
 
 export async function getLauncherContent(): Promise<LauncherContent> {
-  const response = await fetch(`${apiUrl}/api/launcher/content`);
+  const response = await fetch(`${apiUrl}/api/launcher/content?_t=${Date.now()}`, {
+    cache: "no-store"
+  });
 
   if (!response.ok) {
     throw new Error("Failed to load launcher content");
