@@ -6,7 +6,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 // General API rate limiter
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: isDev ? 1000 : 100, // More lenient in dev (1000 vs 100)
+    max: isDev ? 1000 : 500, // 500 requests per 15 mins in production
     message: {
         message: 'Too many requests from this IP, please try again later.',
         error: 'RATE_LIMIT_EXCEEDED'

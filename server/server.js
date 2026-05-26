@@ -14,6 +14,9 @@ connectDB();
 
 const app = express();
 
+// Trust proxy for reverse proxy setups (Caddy/Nginx) in Docker
+app.set('trust proxy', 1);
+
 // Security middlewares
 const { apiLimiter, authLimiter, uploadLimiter } = require('./middleware/rateLimitMiddleware');
 const { sanitizeInput } = require('./middleware/securityMiddleware');
