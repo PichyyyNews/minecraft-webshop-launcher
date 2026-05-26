@@ -16,6 +16,9 @@ const escapeHtml = (str) => {
 // Sanitize MongoDB operators to prevent NoSQL injection
 const sanitizeMongoQuery = (obj) => {
     if (typeof obj !== 'object' || obj === null) return obj;
+    if (Array.isArray(obj)) {
+        return obj.map(item => sanitizeMongoQuery(item));
+    }
 
     const sanitized = {};
     for (const key in obj) {

@@ -113,3 +113,43 @@ npm run dev
 ## 📄 License
 
 This project is licensed under the ISC License.
+
+## MC Launcher Desktop Service
+
+This repository also includes a separate Tauri desktop launcher in `launcher/`.
+
+### Local development
+
+```bash
+cd launcher
+npm install
+npm run dev
+```
+
+The Tauri app runs a Vite frontend on `http://localhost:1420` and opens the native desktop window.
+
+### Web preview only
+
+```bash
+cd launcher
+npm run dev:web
+```
+
+### Build checks
+
+```bash
+cd launcher
+npm run build:web
+cd src-tauri
+cargo check
+```
+
+### Docker
+
+The Docker image serves the launcher frontend preview through nginx. Desktop packaging should still be built on the target OS with Tauri.
+
+```bash
+docker compose up -d launcher
+```
+
+Launcher preview: `http://localhost:1420`

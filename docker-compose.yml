@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mongo:6.0
@@ -19,6 +17,9 @@ services:
       - .env
     environment:
       - PORT=${BACKEND_PORT:-5000}
+      - FRONTEND_URL=${FRONTEND_URL:-https://${DOMAIN:-localhost}}
+      - API_URL=${API_URL:-https://${DOMAIN:-localhost}/api-backend}
+      - LAUNCHER_URL=${LAUNCHER_URL:-https://${DOMAIN:-localhost}:1420}
     volumes:
       - ./server/uploads:/app/uploads
     depends_on:
@@ -42,18 +43,35 @@ services:
     networks:
       - mc-webshop-network
 
-  proxy:
+  launcher:
     build:
-      context: ./nginx
+      context: ./launcher
+    container_name: mc-webshop-launcher
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - mc-webshop-network
+
+  proxy:
+    image: caddy:2.7-alpine
     container_name: mc-webshop-proxy
     restart: always
     ports:
       - "80:80"
-    env_file:
-      - .env
+      - "443:443"
+      - "443:443/udp"
+      - "1420:1420"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
     depends_on:
       - frontend
       - backend
+      - launcher
     networks:
       - mc-webshop-network
 
@@ -63,3 +81,5 @@ networks:
 
 volumes:
   mongodb_data:
+  caddy_data:
+  caddy_config:

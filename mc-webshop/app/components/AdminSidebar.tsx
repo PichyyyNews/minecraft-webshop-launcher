@@ -18,7 +18,8 @@ import {
     ReceiptText,
     Settings,
     LogOut,
-    CreditCard
+    CreditCard,
+    Gamepad2
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -79,6 +80,17 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                 >
                     <Server className="w-5 h-5" />
                     {t('admin.serverStatus')}
+                </Link>
+                <Link
+                    href="/admin/launcher"
+                    onClick={onClose}
+                    className={`px-8 py-3 text-sm font-medium transition-colors flex items-center gap-3 ${isActive('/admin/launcher')
+                        ? 'bg-[var(--primary)]/10 text-[var(--primary)] border-r-2 border-[var(--primary)]'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                >
+                    <Gamepad2 className="w-5 h-5" />
+                    Launcher
                 </Link>
                 <Link
                     href="/admin/console"

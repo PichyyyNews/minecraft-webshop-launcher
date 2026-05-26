@@ -1,0 +1,586 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, FormEvent, MouseEvent } from "react";
+import {
+  ArrowLeft,
+  FolderOpen,
+  Gamepad2,
+  HardDrive,
+  ImageIcon,
+  KeyRound,
+  Loader2,
+  Lock,
+  LogIn,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Settings,
+  ShieldCheck,
+  Minus,
+  Square,
+  Trash2,
+  X,
+} from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import {
+  defaultLauncherConfig,
+  getLauncherConfig,
+  getLauncherContent,
+  loginLauncherUser,
+  openGameFolder,
+  prepareAndLaunch,
+  reinstallGame,
+  resolveAssetUrl,
+  uninstallGame,
+  type LauncherConfig,
+  type LauncherContent,
+  type LauncherStatus,
+  type LauncherUser,
+} from "./tauri";
+import { getLauncherStatus } from "./tauri";
+import SkinAvatar from "./SkinAvatar";
+import { listen } from "@tauri-apps/api/event";
+
+type CarouselItem = {
+  id: string;
+  section: string;
+  title: string;
+  description: string;
+  imageUrl?: string;
+};
+
+type AppView = "home" | "settings";
+type SettingsCategory = "performance" | "account" | "game";
+
+const defaultContent: LauncherContent = {
+  latestArticlesTitle: "Latest Articles",
+  whyChooseUsTitle: "Why Choose Us?",
+  latestArticles: [],
+  cards: [],
+};
+
+function App() {
+  const [status, setStatus] = useState<LauncherStatus>({
+    appName: "MC Launcher",
+    version: "loading",
+    platform: "desktop",
+  });
+  const [config, setConfig] = useState<LauncherConfig>(defaultLauncherConfig);
+  const [content, setContent] = useState<LauncherContent>(defaultContent);
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [user, setUser] = useState<LauncherUser | null>(null);
+  const [loginState, setLoginState] = useState<"idle" | "loading" | "error">("idle");
+  const [configState, setConfigState] = useState<"loading" | "ready" | "error">("loading");
+  const [launchState, setLaunchState] = useState<"idle" | "loading" | "error" | "done">("idle");
+  const [launchMessage, setLaunchMessage] = useState("Waiting for launch task");
+  const [launchPercent, setLaunchPercent] = useState(0);
+  const [view, setView] = useState<AppView>("home");
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("performance");
+  const [ramGb, setRamGb] = useState(() => Number(localStorage.getItem("launcherRamGb") || "2"));
+  const [rememberPassword, setRememberPassword] = useState(() => localStorage.getItem("launcherRememberPassword") === "true");
+  const [keepLoggedIn, setKeepLoggedIn] = useState(() => localStorage.getItem("launcherKeepLoggedIn") !== "false");
+  const [settingsMessage, setSettingsMessage] = useState("Settings are saved on this device");
+
+  const loadLauncherData = useCallback(async () => {
+    setConfigState("loading");
+    try {
+      const [nextConfig, nextContent] = await Promise.all([
+        getLauncherConfig(),
+        getLauncherContent(),
+      ]);
+      setConfig(nextConfig);
+      setContent(nextContent);
+      setConfigState("ready");
+    } catch {
+      setConfig(defaultLauncherConfig);
+      setContent(defaultContent);
+      setConfigState("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    getLauncherStatus().then(setStatus);
+    loadLauncherData();
+
+    const storedUser = localStorage.getItem("launcherUser");
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch {
+        localStorage.removeItem("launcherUser");
+      }
+    }
+
+    const savedUsername = localStorage.getItem("launcherSavedUsername");
+    const savedPassword = localStorage.getItem("launcherSavedPassword");
+    if (savedUsername) setUsername(savedUsername);
+    if (savedPassword) setPassword(savedPassword);
+  }, [loadLauncherData]);
+
+  useEffect(() => {
+    localStorage.setItem("launcherRamGb", String(ramGb));
+  }, [ramGb]);
+
+  useEffect(() => {
+    localStorage.setItem("launcherRememberPassword", String(rememberPassword));
+    if (!rememberPassword) {
+      localStorage.removeItem("launcherSavedPassword");
+    }
+  }, [rememberPassword]);
+
+  useEffect(() => {
+    localStorage.setItem("launcherKeepLoggedIn", String(keepLoggedIn));
+    if (!keepLoggedIn) {
+      localStorage.removeItem("launcherToken");
+      localStorage.removeItem("launcherUser");
+    } else if (user) {
+      localStorage.setItem("launcherUser", JSON.stringify(user));
+    }
+  }, [keepLoggedIn, user]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<{ stage: string; message: string; percent: number }>("launch-progress", (event) => {
+      setLaunchMessage(event.payload.message);
+      setLaunchPercent(event.payload.percent);
+      setLaunchState(event.payload.percent >= 100 ? "done" : "loading");
+    }).then((nextUnlisten) => {
+      unlisten = nextUnlisten;
+    });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  const carouselItems = useMemo<CarouselItem[]>(() => {
+    const articles = content.latestArticles.map((article) => ({
+      id: `article-${article._id}`,
+      section: content.latestArticlesTitle,
+      title: article.title,
+      description: article.content,
+      imageUrl: article.imageUrl,
+    }));
+
+    const cards = content.cards.map((card) => ({
+      id: `card-${card._id}`,
+      section: content.whyChooseUsTitle,
+      title: card.title,
+      description: card.description,
+      imageUrl: card.imageUrl,
+    }));
+
+    const items = [...articles, ...cards];
+    return items.length > 0
+      ? items
+      : [
+          {
+            id: "empty",
+            section: "Launcher",
+            title: "No website content yet",
+            description: "เพิ่ม Latest Articles หรือ Why Choose Us บนเว็บ แล้ว launcher จะแสดงตรงนี้",
+          },
+        ];
+  }, [content]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveSlide((current) => (current + 1) % carouselItems.length);
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [carouselItems.length]);
+
+  const activeItem = carouselItems[activeSlide % carouselItems.length];
+  const logoUrl = resolveAssetUrl(config.logoUrl);
+  const activeImageUrl = resolveAssetUrl(activeItem.imageUrl);
+  const clientLabel =
+    config.installType === "vanilla"
+      ? "Vanilla"
+      : `${config.loaderType}${config.modLoaderVersion ? ` ${config.modLoaderVersion}` : ""}`;
+
+  const shellStyle = {
+    "--launcher-primary": config.primaryColor || defaultLauncherConfig.primaryColor,
+  } as CSSProperties;
+
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoginState("loading");
+
+    try {
+      const nextUser = await loginLauncherUser(username, password);
+      setUser(nextUser);
+      localStorage.setItem("launcherSavedUsername", username);
+      if (rememberPassword) {
+        localStorage.setItem("launcherSavedPassword", password);
+      }
+      if (!keepLoggedIn) {
+        localStorage.removeItem("launcherToken");
+        localStorage.removeItem("launcherUser");
+      }
+      setPassword("");
+      setLoginState("idle");
+    } catch {
+      setLoginState("error");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("launcherToken");
+    localStorage.removeItem("launcherUser");
+    setUser(null);
+  };
+
+  const handlePlay = async () => {
+    if (!user) return;
+
+    setLaunchState("loading");
+    setLaunchMessage("Refreshing launcher profile");
+    setLaunchPercent(3);
+
+    try {
+      const latestConfig = await getLauncherConfig();
+      setConfig(latestConfig);
+
+      if (
+        latestConfig.installType === "modded" &&
+        (!latestConfig.loaderType ||
+          latestConfig.loaderType === "Vanilla" ||
+          !latestConfig.modLoaderVersion)
+      ) {
+        setLaunchState("error");
+        setLaunchMessage("Select a mod loader version in admin before launching");
+        setLaunchPercent(100);
+        return;
+      }
+
+      setLaunchMessage("Preparing launcher profile");
+
+      const result = await prepareAndLaunch(latestConfig, user.name, ramGb);
+      setLaunchState(result.launched ? "done" : "error");
+      setLaunchMessage(result.message);
+      setLaunchPercent(100);
+
+      if (result.launched) {
+        window.setTimeout(() => {
+          handleWindowAction("close");
+        }, 500);
+      }
+    } catch (error) {
+      setLaunchState("error");
+      setLaunchMessage(error instanceof Error ? error.message : typeof error === "string" ? error : "Launch failed");
+      setLaunchPercent(100);
+    }
+  };
+
+  const handleWindowAction = async (action: "minimize" | "maximize" | "close") => {
+    try {
+      const appWindow = getCurrentWindow();
+      if (action === "minimize") await appWindow.minimize();
+      if (action === "maximize") await appWindow.toggleMaximize();
+      if (action === "close") await appWindow.close();
+    } catch {
+      // Browser preview has no native window controls.
+    }
+  };
+
+  const handleTitlebarDrag = async (event: MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest(".window-controls")) return;
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      // Browser preview has no native drag region.
+    }
+  };
+
+  const handleMaintenance = async (action: "open" | "reinstall" | "uninstall") => {
+    setSettingsMessage("Working...");
+    try {
+      const result =
+        action === "open"
+          ? await openGameFolder(config)
+          : action === "reinstall"
+            ? await reinstallGame(config)
+            : await uninstallGame(config);
+      setLaunchState(action === "open" ? launchState : "idle");
+      setLaunchMessage(result.message);
+      setLaunchPercent(action === "open" ? launchPercent : 0);
+      setSettingsMessage(result.message);
+    } catch {
+      setSettingsMessage("Action failed");
+    }
+  };
+
+  const settingsCategories: Array<{
+    id: SettingsCategory;
+    label: string;
+    icon: typeof HardDrive;
+  }> = [
+    { id: "performance", label: "Performance", icon: HardDrive },
+    { id: "account", label: "Account", icon: KeyRound },
+    { id: "game", label: "Game Files", icon: FolderOpen },
+  ];
+
+  return (
+    <main className="launcher-shell" style={shellStyle}>
+      <header className="titlebar" data-tauri-drag-region onMouseDown={handleTitlebarDrag}>
+        <div className="titlebar-game-meta" aria-label="Game version">
+          <span>{config.minecraftVersion}</span>
+          <strong>{clientLabel}</strong>
+        </div>
+        <div className="window-controls">
+          <button onClick={() => handleWindowAction("minimize")} title="Minimize">
+            <Minus size={15} />
+          </button>
+          <button onClick={() => handleWindowAction("maximize")} title="Maximize">
+            <Square size={13} />
+          </button>
+          <button className="close-button" onClick={() => handleWindowAction("close")} title="Close">
+            <X size={16} />
+          </button>
+        </div>
+      </header>
+
+      <nav className="launcher-nav">
+        <div className="nav-brand">
+          <div className="nav-logo">
+            {logoUrl ? <img src={logoUrl} alt="" /> : <Gamepad2 size={28} />}
+          </div>
+          <div>
+            <strong>{config.appName || status.appName}</strong>
+            <span>{config.headline}</span>
+          </div>
+        </div>
+        <div className="nav-actions">
+          <button
+            className={configState === "error" ? "nav-icon-button error" : "nav-icon-button"}
+            onClick={loadLauncherData}
+            title={configState === "loading" ? "Syncing config" : configState === "error" ? "Refresh config failed" : "Refresh config"}
+          >
+            <RefreshCw className={configState === "loading" ? "spin" : ""} size={19} />
+          </button>
+          <button
+            className={view === "settings" ? "nav-icon-button active" : "nav-icon-button"}
+            onClick={() => setView("settings")}
+            title="Settings"
+          >
+            <Settings size={19} />
+          </button>
+        </div>
+      </nav>
+
+      {view === "settings" ? (
+        <section className="settings-layout" aria-label="Launcher settings">
+          <aside className="settings-sidebar">
+            <button className="settings-back" onClick={() => setView("home")} title="Back to launcher">
+              <ArrowLeft size={18} />
+              <span>Launcher</span>
+            </button>
+            <div className="settings-nav-list">
+              {settingsCategories.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    className={settingsCategory === item.id ? "settings-nav-item active" : "settings-nav-item"}
+                    onClick={() => setSettingsCategory(item.id)}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <section className="settings-panel">
+            <div className="settings-header">
+              <p className="eyebrow">Settings</p>
+              <h2>
+                {settingsCategory === "performance"
+                  ? "Performance"
+                  : settingsCategory === "account"
+                    ? "Account"
+                    : "Game Files"}
+              </h2>
+            </div>
+
+            {settingsCategory === "performance" && (
+              <div className="settings-stack">
+                <div className="setting-row">
+                  <div>
+                    <strong>RAM Allocation</strong>
+                    <span>{ramGb} GB will be used when launching Minecraft</span>
+                  </div>
+                  <div className="ram-control">
+                    <input
+                      type="range"
+                      min="1"
+                      max="16"
+                      value={ramGb}
+                      onChange={(event) => setRamGb(Number(event.target.value))}
+                    />
+                    <output>{ramGb} GB</output>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {settingsCategory === "account" && (
+              <div className="settings-stack">
+                <label className="toggle-row">
+                  <div>
+                    <strong>Remember password</strong>
+                    <span>Keep the saved password on this device for the login form</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={rememberPassword}
+                    onChange={(event) => setRememberPassword(event.target.checked)}
+                  />
+                </label>
+                <label className="toggle-row">
+                  <div>
+                    <strong>Stay logged in</strong>
+                    <span>Restore the current account when the launcher opens</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={keepLoggedIn}
+                    onChange={(event) => setKeepLoggedIn(event.target.checked)}
+                  />
+                </label>
+              </div>
+            )}
+
+            {settingsCategory === "game" && (
+              <div className="settings-stack">
+                <button className="setting-action" onClick={() => handleMaintenance("open")}>
+                  <FolderOpen size={20} />
+                  <div>
+                    <strong>Open game folder</strong>
+                    <span>Open the current installation folder</span>
+                  </div>
+                </button>
+                <button className="setting-action" onClick={() => handleMaintenance("reinstall")}>
+                  <RotateCcw size={20} />
+                  <div>
+                    <strong>Reinstall</strong>
+                    <span>Clear installed files so the next Play installs fresh files</span>
+                  </div>
+                </button>
+                <button className="setting-action danger" onClick={() => handleMaintenance("uninstall")}>
+                  <Trash2 size={20} />
+                  <div>
+                    <strong>Uninstall</strong>
+                    <span>Remove the installed game files for this profile</span>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            <div className="settings-status">
+              <ShieldCheck size={17} />
+              <span>{settingsMessage}</span>
+            </div>
+          </section>
+        </section>
+      ) : (
+      <section className="main-layout">
+        <section className="carousel-panel" aria-label="Website content carousel">
+          <div className="carousel-image">
+            {activeImageUrl ? <img src={activeImageUrl} alt="" /> : <ImageIcon size={64} />}
+          </div>
+          <div className="carousel-content">
+            <div className="carousel-kicker">{activeItem.section}</div>
+            <h2>{activeItem.title}</h2>
+            <p>{activeItem.description.replace(/<[^>]*>/g, "").slice(0, 260)}</p>
+            <div className="dots" aria-label="Carousel slides">
+              {carouselItems.map((item, index) => (
+                <button
+                  key={item.id}
+                  className={index === activeSlide ? "dot active" : "dot"}
+                  onClick={() => setActiveSlide(index)}
+                  title={item.title}
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <aside className="auth-panel">
+          {user ? (
+            <div className="play-state">
+              <SkinAvatar username={user.name} />
+              <p className="eyebrow">Logged in</p>
+              <h2>{user.name}</h2>
+              <button className="primary-button" onClick={handlePlay} disabled={launchState === "loading" || launchState === "done"}>
+                {launchState === "loading" ? <Loader2 className="spin" size={22} /> : <Play size={22} fill="currentColor" />}
+                <span>{launchState === "loading" ? "Loading" : "Play"}</span>
+              </button>
+              <button className="text-button" onClick={handleLogout}>
+                Logout
+              </button>
+            </div>
+          ) : (
+            <form className="login-form" onSubmit={handleLogin}>
+              <div className="lock-icon">
+                <Lock size={26} />
+              </div>
+              <h2>Login</h2>
+              <p>ใช้ username หรือ email จากเว็บเพื่อเข้า launcher</p>
+
+              <label>
+                <span>Username</span>
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  placeholder="playername"
+                />
+              </label>
+
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  placeholder="password"
+                />
+              </label>
+
+              {loginState === "error" && (
+                <div className="login-error">Username หรือ password ไม่ถูกต้อง</div>
+              )}
+
+              <button className="primary-button" disabled={loginState === "loading"}>
+                {loginState === "loading" ? <Loader2 className="spin" size={20} /> : <LogIn size={20} />}
+                <span>{loginState === "loading" ? "Checking" : "Login"}</span>
+              </button>
+            </form>
+          )}
+        </aside>
+      </section>
+      )}
+
+      <footer className="download-bar">
+        <div>
+          <strong>{launchState === "loading" ? "Loading" : launchState === "error" ? "Error" : "Ready"}</strong>
+          <span>{launchMessage}</span>
+        </div>
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: `${launchPercent}%` }} />
+        </div>
+        <span className="progress-value">{launchPercent}%</span>
+      </footer>
+    </main>
+  );
+}
+
+export default App;

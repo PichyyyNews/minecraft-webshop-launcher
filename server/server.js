@@ -7,6 +7,7 @@ const path = require('path');
 
 // Load env vars
 dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Connect to database
 connectDB();
@@ -29,8 +30,11 @@ const allowedOrigins = [
   'http://127.0.0.1',
   'http://localhost:3000',
   'http://localhost:5000',
+  'http://localhost:1420',
+  'tauri://localhost',
   process.env.FRONTEND_URL,
-  process.env.API_URL
+  process.env.API_URL,
+  process.env.LAUNCHER_URL
 ].filter(Boolean).map(url => url.replace(/\/$/, ''));
 
 app.use(cors({
@@ -96,6 +100,7 @@ app.use('/api/tags', require('./routes/tags'));
 app.use('/api/rcon', require('./routes/rcon'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/team', require('./routes/team'));
+app.use('/api/launcher', require('./routes/launcher'));
 
 // Get all settings
 app.get('/api/settings', async (req, res) => {
