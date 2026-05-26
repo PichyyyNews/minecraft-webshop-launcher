@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Setting = require('../models/Setting');
 const jwt = require('jsonwebtoken');
 const { executeRconCommand } = require('../utils/rconUtil');
+const { registerAuthMeUser, changeAuthMePassword } = require('../utils/authmeDb');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -17,21 +18,21 @@ exports.register = async (req, res, next) => {
       password,
     });
 
-    // Send AuthMe register command
+    // Sync to AuthMe MySQL database (direct DB connection, no RCON needed)
     try {
       const authmeSetting = await Setting.findOne({ key: 'authmeEnabled' });
-      const isAuthMeEnabled = authmeSetting ? authmeSetting.value === 'true' : true; // Default to true
+      const isAuthMeEnabled = authmeSetting ? authmeSetting.value === 'true' : true;
 
       if (isAuthMeEnabled) {
-        const rconCommand = `authme register ${name} ${password}`;
-        await executeRconCommand(rconCommand, 'System (Registration)');
-        console.log(`[AuthMe] Registered user ${name} via RCON`);
+        const clientIp = req.ip || req.connection?.remoteAddress || '127.0.0.1';
+        const result = await registerAuthMeUser(name, password, clientIp, email);
+        console.log(`[AuthMe DB] Register result for ${name}: ${result.message}`);
       } else {
-        console.log(`[AuthMe] Skipped RCON registration (disabled in settings)`);
+        console.log(`[AuthMe] Skipped AuthMe registration (disabled in settings)`);
       }
-    } catch (rconError) {
-      console.error(`[AuthMe] Failed to register user ${name} via RCON:`, rconError.message);
-      // We don't fail the web registration if RCON fails, but we log it.
+    } catch (authmeError) {
+      console.error(`[AuthMe DB] Failed to register user ${name}:`, authmeError.message);
+      // We don't fail the web registration if AuthMe sync fails, but we log it.
     }
 
     sendTokenResponse(user, 200, res);
@@ -136,6 +137,13 @@ exports.resetUserPassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
+    // Sync password to AuthMe MySQL
+    try {
+      await changeAuthMePassword(user.name, newPassword);
+    } catch (authmeError) {
+      console.error(`[AuthMe DB] Failed to sync password for ${user.name}:`, authmeError.message);
+    }
+
     res.status(200).json({ success: true, message: 'Password reset successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -226,6 +234,13 @@ exports.resetPassword = async (req, res, next) => {
     user.resetPasswordExpire = undefined;
 
     await user.save();
+
+    // Sync password to AuthMe MySQL
+    try {
+      await changeAuthMePassword(user.name, req.body.password);
+    } catch (authmeError) {
+      console.error(`[AuthMe DB] Failed to sync password for ${user.name}:`, authmeError.message);
+    }
 
     sendTokenResponse(user, 200, res);
   } catch (err) {

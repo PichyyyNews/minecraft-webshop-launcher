@@ -24,6 +24,7 @@
     "minecraft-server-util": "^5.4.4",
     "mongoose": "^9.0.0",
     "multer": "^2.0.2",
+    "mysql2": "^3.22.4",
     "nodemailer": "^7.0.11",
     "puppeteer": "^24.33.0",
     "puppeteer-extra": "^3.3.6",
