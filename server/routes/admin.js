@@ -37,7 +37,7 @@ const launcherFileUpload = multer({
         },
     }),
     limits: {
-        fileSize: 100 * 1024 * 1024,
+        fileSize: 500 * 1024 * 1024,
     },
     fileFilter: (req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();

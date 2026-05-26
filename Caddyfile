@@ -1,7 +1,7 @@
 {$DOMAIN} {
-    # Limit upload size to 100MB
+    # Limit upload size to 500MB
     request_body {
-        max_size 100MB
+        max_size 500MB
     }
 
     # Proxy API requests to backend (stripping the /api-backend prefix)
@@ -24,7 +24,7 @@
 {$DOMAIN}:1420 {
     # Limit upload size
     request_body {
-        max_size 100MB
+        max_size 500MB
     }
 
     # Proxy API requests (for self-configuring dynamic API calls)
