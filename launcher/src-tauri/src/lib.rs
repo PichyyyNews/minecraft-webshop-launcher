@@ -1440,17 +1440,21 @@ async fn prepare_and_launch(
 
     if let Some(options_url) = resolve_remote_url(&api_base_url, &config.options_file_url) {
         emit_progress(&app, "download", "Downloading options file", 78);
-        download_to_replace(&client, &options_url, &game_dir.join("options.txt")).await?;
+        if let Err(e) = download_to_replace(&client, &options_url, &game_dir.join("options.txt")).await {
+            eprintln!("[Launcher] Warning: Failed to download options file ({}), skipping: {}", options_url, e);
+        }
     }
 
     if let Some(resource_pack_url) = resolve_remote_url(&api_base_url, &config.resource_pack_url) {
         emit_progress(&app, "download", "Downloading resource pack", 84);
-        download_to_replace(
+        if let Err(e) = download_to_replace(
             &client,
             &resource_pack_url,
             &game_dir.join("resourcepacks").join("server-pack.zip"),
         )
-        .await?;
+        .await {
+            eprintln!("[Launcher] Warning: Failed to download resource pack ({}), skipping: {}", resource_pack_url, e);
+        }
     }
 
     emit_progress(&app, "download", "Syncing resource packs", 86);

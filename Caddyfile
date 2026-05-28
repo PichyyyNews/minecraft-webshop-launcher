@@ -9,7 +9,7 @@
         reverse_proxy backend:5000
     }
 
-    # Proxy uploads from backend (preserving the path /uploads/...)
+    # Also proxy /uploads directly (for frontend references)
     handle /uploads/* {
         reverse_proxy backend:5000
     }
