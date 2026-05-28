@@ -110,6 +110,10 @@ app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/launcher', require('./routes/launcher'));
 
+// Auto-Login verify for Minecraft Plugin
+const { verifyJoinToken } = require('./controllers/autologinController');
+app.get('/api/server/verify-login', verifyJoinToken);
+
 // Get all settings
 app.get('/api/settings', async (req, res) => {
   try {

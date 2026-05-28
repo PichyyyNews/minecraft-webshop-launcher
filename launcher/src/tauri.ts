@@ -177,6 +177,23 @@ export function resolveAssetUrl(url?: string): string | undefined {
 }
 
 export async function prepareAndLaunch(config: LauncherConfig, username: string, ramGb: number): Promise<LaunchResult> {
+  // Call backend to generate auto-login token before launching
+  try {
+    const token = localStorage.getItem("launcherToken");
+    if (token) {
+      await fetch(`${getApiUrl()}/api/launcher/auto-login`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      console.log("Auto-login token requested");
+    }
+  } catch (e) {
+    console.error("Failed to request auto-login token", e);
+  }
+
   return invoke<LaunchResult>("prepare_and_launch", {
     config,
     apiBaseUrl: getApiUrl(),

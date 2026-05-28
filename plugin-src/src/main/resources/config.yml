@@ -1,0 +1,3 @@
+# WebShop AutoLogin Configuration
+# URL to verify if the player has a valid join token
+api_url: "https://pixel-kati.com/api-backend/api/server/verify-login"

@@ -1,0 +1,7 @@
+name: WebShopAutoLogin
+version: 1.0.0
+main: com.kati.autologin.WebShopAutoLogin
+api-version: 1.13
+author: AI Agent
+description: Auto-login plugin for WebShop Launcher via API
+depend: [AuthMe]
