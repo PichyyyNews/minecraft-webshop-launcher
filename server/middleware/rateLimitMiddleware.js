@@ -18,7 +18,7 @@ const apiLimiter = rateLimit({
 // Strict limiter for authentication routes
 const authLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: isDev ? 100 : 10, // More lenient in dev (100 vs 10)
+    max: isDev ? 1000 : 200, // Increased to prevent false positives (was 10)
     message: {
         message: 'Too many login attempts, please try again after an hour.',
         error: 'AUTH_RATE_LIMIT_EXCEEDED'
