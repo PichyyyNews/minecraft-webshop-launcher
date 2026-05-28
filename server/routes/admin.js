@@ -45,6 +45,7 @@ const launcherFileUpload = multer({
 
         if (type === 'options' && ['.txt', '.json'].includes(ext)) return cb(null, true);
         if (type === 'resourcePack' && ext === '.zip') return cb(null, true);
+        if (type === 'config' && ext === '.zip') return cb(null, true);
         if (type === 'mod' && ext === '.jar') return cb(null, true);
 
         cb(new Error('Invalid launcher file type.'));

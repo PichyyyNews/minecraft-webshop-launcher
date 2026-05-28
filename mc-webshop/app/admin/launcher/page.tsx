@@ -17,6 +17,7 @@ type LauncherConfig = {
     loaderType: 'Vanilla' | 'Fabric' | 'Forge' | 'Quilt';
     modLoaderVersion: string;
     optionsFileUrl: string;
+    configFileUrl: string;
     resourcePackUrl: string;
     mods: LauncherMod[];
     resourcePacks: LauncherMod[];
@@ -151,6 +152,7 @@ const defaultConfig: LauncherConfig = {
     loaderType: 'Vanilla',
     modLoaderVersion: '',
     optionsFileUrl: '',
+    configFileUrl: '',
     resourcePackUrl: '',
     mods: [],
     resourcePacks: [],
@@ -168,6 +170,7 @@ export default function AdminLauncherPage() {
     const [config, setConfig] = useState<LauncherConfig>(defaultConfig);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [optionsFile, setOptionsFile] = useState<File | null>(null);
+    const [configFile, setConfigFile] = useState<File | null>(null);
     const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersionOption[]>([]);
     const [loaders, setLoaders] = useState<LoaderOption[]>([]);
     const [loaderVersions, setLoaderVersions] = useState<LoaderVersionOption[]>([]);
@@ -576,9 +579,9 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
-    const uploadLauncherFile = async (token: string, type: 'options', file: File | null) => {
+    const uploadLauncherFile = async (token: string, type: 'options' | 'config', file: File | null) => {
         if (!file) {
-            return config.optionsFileUrl;
+            return type === 'options' ? config.optionsFileUrl : config.configFileUrl;
         }
 
         const formData = new FormData();
@@ -755,7 +758,8 @@ export default function AdminLauncherPage() {
 
             const logoUrl = await saveLogo(token);
             const optionsFileUrl = await uploadLauncherFile(token, 'options', optionsFile);
-            const payload = { ...config, logoUrl, optionsFileUrl, resourcePackUrl: '' };
+            const configFileUrl = await uploadLauncherFile(token, 'config', configFile);
+            const payload = { ...config, logoUrl, optionsFileUrl, configFileUrl, resourcePackUrl: '' };
 
             const res = await fetch(`${API_URL}/api/admin/launcher/config`, {
                 method: 'PUT',
@@ -779,6 +783,7 @@ export default function AdminLauncherPage() {
             setConfig(prev => ({ ...prev, ...data.config }));
             setLogoFile(null);
             setOptionsFile(null);
+            setConfigFile(null);
             setMessage('Launcher config saved');
             setTimeout(() => setMessage(''), 3000);
         } catch (error) {
@@ -988,6 +993,20 @@ export default function AdminLauncherPage() {
                                         className="block w-full text-sm text-gray-300 file:mr-4 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:font-bold file:text-white hover:file:bg-white/15"
                                     />
                                     {config.optionsFileUrl && <p className="mt-2 text-xs text-gray-500">{config.optionsFileUrl}</p>}
+                                </div>
+
+                                <div>
+                                    <label className={`${labelClass} flex items-center gap-2`}>
+                                        <FileText className="w-4 h-4" />
+                                        Config Folder (ZIP)
+                                    </label>
+                                    <input
+                                        type="file"
+                                        accept=".zip"
+                                        onChange={(event) => setConfigFile(event.target.files?.[0] || null)}
+                                        className="block w-full text-sm text-gray-300 file:mr-4 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:font-bold file:text-white hover:file:bg-white/15"
+                                    />
+                                    {config.configFileUrl && <p className="mt-2 text-xs text-gray-500">{config.configFileUrl}</p>}
                                 </div>
 
                             </div>

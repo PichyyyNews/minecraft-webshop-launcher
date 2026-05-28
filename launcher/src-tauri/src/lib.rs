@@ -13,6 +13,9 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LauncherStatus {
@@ -30,6 +33,7 @@ struct LaunchConfig {
     loader_type: String,
     mod_loader_version: String,
     options_file_url: String,
+    config_file_url: String,
     resource_pack_url: String,
     #[serde(default)]
     mods: Vec<LaunchMod>,
@@ -234,7 +238,7 @@ fn check_java_version(cmd: &str) -> Option<u32> {
         .stderr(Stdio::piped())
         .output()
         .ok()?;
-    
+
     let stderr_str = String::from_utf8_lossy(&output.stderr);
     let stdout_str = String::from_utf8_lossy(&output.stdout);
     let version_str = if stderr_str.is_empty() {
@@ -271,7 +275,8 @@ fn parse_java_version(version_str: &str) -> Option<u32> {
     for line in version_str.lines() {
         let words: Vec<&str> = line.split_whitespace().collect();
         for (i, word) in words.iter().enumerate() {
-            if (*word == "version" || *word == "openjdk" || *word == "java") && i + 1 < words.len() {
+            if (*word == "version" || *word == "openjdk" || *word == "java") && i + 1 < words.len()
+            {
                 let ver = words[i + 1].trim_matches('"');
                 let parts: Vec<&str> = ver.split('.').collect();
                 if !parts.is_empty() {
@@ -293,9 +298,7 @@ fn parse_java_version(version_str: &str) -> Option<u32> {
 }
 
 fn check_java_is_compatible(path: &str) -> bool {
-    check_java_version(path)
-        .map(|v| v >= 17)
-        .unwrap_or(false)
+    check_java_version(path).map(|v| v >= 17).unwrap_or(false)
 }
 
 fn find_java_path() -> Option<String> {
@@ -357,7 +360,7 @@ fn find_java_path() -> Option<String> {
         // 4. Minecraft Launcher bundled Java (usually Java 17 or 21)
         let app_data = std::env::var("APPDATA").unwrap_or_default();
         let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
-        
+
         let mc_paths = vec![
             format!("{}\\.minecraft\\runtime\\java-runtime-delta\\windows-x64\\java-runtime-delta\\bin\\java.exe", app_data),
             format!("{}\\.minecraft\\runtime\\java-runtime-gamma\\windows-x64\\java-runtime-gamma\\bin\\java.exe", app_data),
@@ -384,31 +387,34 @@ fn find_java_path() -> Option<String> {
 async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let jre_dir = app_data.join("game").join("runtime-java21");
-    let java_exe = jre_dir.join("jdk-21.0.2+13-jre").join("bin").join("java.exe");
-    
+    let java_exe = jre_dir
+        .join("jdk-21.0.2+13-jre")
+        .join("bin")
+        .join("java.exe");
+
     if java_exe.exists() {
         return Ok(java_exe.to_string_lossy().to_string());
     }
 
     emit_progress(app, "java-download", "Downloading Java 21 (Required)...", 0);
-    
+
     let client = reqwest::Client::new();
     let zip_url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.2%2B13/OpenJDK21U-jre_x64_windows_hotspot_21.0.2_13.zip";
     let zip_path = app_data.join("game").join("java21.zip");
 
     // Download zip file
     download_to_replace(&client, zip_url, &zip_path).await?;
-    
+
     emit_progress(app, "java-extract", "Extracting Java 21...", 50);
-    
+
     // Extract zip file
     let file = File::open(&zip_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
         let outpath = jre_dir.join(file.name());
-        
+
         if file.name().ends_with('/') {
             fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
         } else {
@@ -419,7 +425,7 @@ async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
             io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
         }
     }
-    
+
     // Clean up zip
     let _ = fs::remove_file(zip_path);
 
@@ -434,7 +440,7 @@ async fn get_or_download_java_path(app: &AppHandle) -> Result<String, String> {
     if let Some(path) = find_java_path() {
         return Ok(path);
     }
-    
+
     // Download Java 21 if no compatible version is found
     download_and_extract_java(app).await
 }
@@ -507,6 +513,52 @@ async fn download_to_replace(
     }
 
     download_to(client, url, destination).await
+}
+
+async fn download_and_extract_zip(
+    client: &reqwest::Client,
+    url: &str,
+    extract_dir: &Path,
+) -> Result<(), String> {
+    let bytes = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .bytes()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(cursor).map_err(|error| error.to_string())?;
+
+    if !extract_dir.exists() {
+        fs::create_dir_all(extract_dir).map_err(|error| error.to_string())?;
+    }
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|error| error.to_string())?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => extract_dir.join(path),
+            None => continue,
+        };
+
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath).map_err(|error| error.to_string())?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    fs::create_dir_all(&p).map_err(|error| error.to_string())?;
+                }
+            }
+            let mut outfile = fs::File::create(&outpath).map_err(|error| error.to_string())?;
+            std::io::copy(&mut file, &mut outfile).map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
 }
 
 fn library_path_from_name(name: &str) -> Option<PathBuf> {
@@ -1440,8 +1492,24 @@ async fn prepare_and_launch(
 
     if let Some(options_url) = resolve_remote_url(&api_base_url, &config.options_file_url) {
         emit_progress(&app, "download", "Downloading options file", 78);
-        if let Err(e) = download_to_replace(&client, &options_url, &game_dir.join("options.txt")).await {
-            eprintln!("[Launcher] Warning: Failed to download options file ({}), skipping: {}", options_url, e);
+        if let Err(e) =
+            download_to_replace(&client, &options_url, &game_dir.join("options.txt")).await
+        {
+            eprintln!(
+                "[Launcher] Warning: Failed to download options file ({}), skipping: {}",
+                options_url, e
+            );
+        }
+    }
+
+    if let Some(config_url) = resolve_remote_url(&api_base_url, &config.config_file_url) {
+        emit_progress(&app, "download", "Downloading config folder", 81);
+        if let Err(e) = download_and_extract_zip(&client, &config_url, &game_dir.join("config")).await
+        {
+            eprintln!(
+                "[Launcher] Warning: Failed to download/extract config zip ({}), skipping: {}",
+                config_url, e
+            );
         }
     }
 
@@ -1452,18 +1520,17 @@ async fn prepare_and_launch(
             &resource_pack_url,
             &game_dir.join("resourcepacks").join("server-pack.zip"),
         )
-        .await {
-            eprintln!("[Launcher] Warning: Failed to download resource pack ({}), skipping: {}", resource_pack_url, e);
+        .await
+        {
+            eprintln!(
+                "[Launcher] Warning: Failed to download resource pack ({}), skipping: {}",
+                resource_pack_url, e
+            );
         }
     }
 
     emit_progress(&app, "download", "Syncing resource packs", 86);
     let resourcepacks_dir = game_dir.join("resourcepacks");
-    let managed_packs_manifest_path = game_dir.join("launcher-managed-resourcepacks.json");
-    let previous_packs: Vec<String> = fs::read_to_string(&managed_packs_manifest_path)
-        .ok()
-        .and_then(|data| serde_json::from_str(&data).ok())
-        .unwrap_or_default();
     let mut desired_packs = Vec::new();
 
     for selected_pack in &config.resource_packs {
@@ -1478,32 +1545,23 @@ async fn prepare_and_launch(
         }
     }
 
-    for file_name in previous_packs {
-        if desired_packs.iter().any(|desired| desired == &file_name) {
-            continue;
-        }
-
-        let path = resourcepacks_dir.join(safe_pack_file_name(&file_name));
-        if path.exists() {
-            let _ = fs::remove_file(path);
+    if let Ok(entries) = fs::read_dir(&resourcepacks_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if file_name.ends_with(".zip") && !desired_packs.iter().any(|d| d == file_name) {
+                        let _ = fs::remove_file(path);
+                    }
+                }
+            }
         }
     }
-
-    fs::write(
-        managed_packs_manifest_path,
-        serde_json::to_vec_pretty(&desired_packs).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())?;
 
     if config.install_type == "modded" {
         emit_progress(&app, "download", "Syncing selected mods", 88);
         let mods_dir = game_dir.join("mods");
         fs::create_dir_all(&mods_dir).map_err(|error| error.to_string())?;
-        let managed_manifest_path = game_dir.join("launcher-managed-mods.json");
-        let previous_files: Vec<String> = fs::read_to_string(&managed_manifest_path)
-            .ok()
-            .and_then(|data| serde_json::from_str(&data).ok())
-            .unwrap_or_default();
         let mut desired_files = Vec::new();
 
         for selected_mod in &config.mods {
@@ -1520,22 +1578,20 @@ async fn prepare_and_launch(
             }
         }
 
-        for file_name in previous_files {
-            if desired_files.iter().any(|desired| desired == &file_name) {
-                continue;
-            }
-
-            let path = mods_dir.join(safe_file_name(&file_name));
-            if path.exists() {
-                let _ = fs::remove_file(path);
+        if let Ok(entries) = fs::read_dir(&mods_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                        if (file_name.ends_with(".jar") || file_name.ends_with(".disabled"))
+                            && !desired_files.iter().any(|d| d == file_name)
+                        {
+                            let _ = fs::remove_file(path);
+                        }
+                    }
+                }
             }
         }
-
-        fs::write(
-            managed_manifest_path,
-            serde_json::to_vec_pretty(&desired_files).map_err(|error| error.to_string())?,
-        )
-        .map_err(|error| error.to_string())?;
     }
 
     emit_progress(&app, "launch", "Starting Minecraft", 92);
@@ -1669,8 +1725,8 @@ async fn prepare_and_launch(
         .map_err(|error| error.to_string())?;
     let stderr = stdout.try_clone().map_err(|error| error.to_string())?;
 
-    let mut child = Command::new(&java_path)
-        .args(jvm_args)
+    let mut child = Command::new(&java_path);
+    child.args(jvm_args)
         .arg(main_class)
         .args(loader_game_args)
         .arg("--username")
@@ -1693,7 +1749,15 @@ async fn prepare_and_launch(
         .arg("release")
         .current_dir(&game_dir)
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        child.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = child
         .spawn()
         .map_err(|error| format!("Failed to start Java: {error}"))?;
 
@@ -1735,6 +1799,12 @@ async fn prepare_and_launch(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .invoke_handler(tauri::generate_handler![
             get_launcher_status,
             open_game_folder,

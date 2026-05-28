@@ -112,6 +112,10 @@ const LauncherConfigSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    configFileUrl: {
+        type: String,
+        default: '',
+    },
     resourcePackUrl: {
         type: String,
         default: '',

@@ -136,6 +136,7 @@ const sanitizeConfigPayload = (payload) => {
         loaderType,
         modLoaderVersion,
         optionsFileUrl: payload.optionsFileUrl,
+        configFileUrl: payload.configFileUrl,
         resourcePackUrl: payload.resourcePackUrl,
         mods: sanitizeMods(payload.mods, installType, minecraftVersion, loaderType),
         resourcePacks: sanitizeResourcePacks(payload.resourcePacks, minecraftVersion),
@@ -271,6 +272,7 @@ const uploadLauncherFile = async (req, res) => {
     const fieldMap = {
         options: 'optionsFileUrl',
         resourcePack: 'resourcePackUrl',
+        config: 'configFileUrl',
     };
     const fieldName = fieldMap[req.params.type];
 

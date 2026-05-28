@@ -103,6 +103,10 @@ function App() {
     getLauncherStatus().then(setStatus);
     loadLauncherData();
 
+    const intervalId = setInterval(() => {
+      loadLauncherData();
+    }, 5 * 60 * 1000);
+
     const storedUser = localStorage.getItem("launcherUser");
     if (storedUser) {
       try {
@@ -116,6 +120,8 @@ function App() {
     const savedPassword = localStorage.getItem("launcherSavedPassword");
     if (savedUsername) setUsername(savedUsername);
     if (savedPassword) setPassword(savedPassword);
+
+    return () => clearInterval(intervalId);
   }, [loadLauncherData]);
 
   useEffect(() => {
