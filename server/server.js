@@ -10,7 +10,10 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // Connect to database
-connectDB();
+connectDB().then(() => {
+  const { initAuthMeFromSettings } = require('./utils/authmeDb');
+  initAuthMeFromSettings();
+});
 
 const app = express();
 

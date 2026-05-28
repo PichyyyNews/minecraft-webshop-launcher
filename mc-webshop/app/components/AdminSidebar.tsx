@@ -19,7 +19,8 @@ import {
     Settings,
     LogOut,
     CreditCard,
-    Gamepad2
+    Gamepad2,
+    Database
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -179,6 +180,17 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
                 >
                     <CreditCard className="w-5 h-5" />
                     {t('admin.settings.payment')}
+                </Link>
+                <Link
+                    href="/admin/database"
+                    onClick={onClose}
+                    className={`px-8 py-3 text-sm font-medium transition-colors flex items-center gap-3 ${isActive('/admin/database')
+                        ? 'bg-[var(--primary)]/10 text-[var(--primary)] border-r-2 border-[var(--primary)]'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                >
+                    <Database className="w-5 h-5" />
+                    Database
                 </Link>
                 <Link
                     href="/admin/settings"

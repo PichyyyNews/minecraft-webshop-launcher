@@ -54,4 +54,13 @@ const launcherFileUpload = multer({
 router.post('/launcher/files/:type', protect, admin, launcherFileUpload.single('file'), uploadLauncherFile);
 router.post('/launcher/preset-files/:type', protect, admin, launcherFileUpload.array('file'), uploadLauncherPresetFile);
 
+const { getAuthMeConfig: getAuthMeConfigCtrl, updateAuthMeConfig: updateAuthMeConfigCtrl, testAuthMeConnection: testAuthMeConnectionCtrl, getAuthMeUsers: getAuthMeUsersCtrl, deleteAuthMeUser: deleteAuthMeUserCtrl, syncAuthMeUsers } = require('../controllers/authmeController');
+
+router.get('/authme/config', protect, admin, getAuthMeConfigCtrl);
+router.put('/authme/config', protect, admin, updateAuthMeConfigCtrl);
+router.post('/authme/test', protect, admin, testAuthMeConnectionCtrl);
+router.get('/authme/users', protect, admin, getAuthMeUsersCtrl);
+router.delete('/authme/users/:username', protect, admin, deleteAuthMeUserCtrl);
+router.post('/authme/sync', protect, admin, syncAuthMeUsers);
+
 module.exports = router;
