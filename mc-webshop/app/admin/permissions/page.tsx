@@ -8,7 +8,7 @@ import {
     ShieldCheck, Plus, Pencil, Trash2, X, Save, Eye, EyeOff,
     LayoutDashboard, Globe, Users, Server, Terminal, BookOpen,
     MessageSquareWarning, Coins, ShoppingBag, UserCog, ReceiptText,
-    Settings, CreditCard, Gamepad2, Database,
+    Settings, CreditCard, Gamepad2, Database, FolderKanban, Ticket,
 } from 'lucide-react';
 
 interface AdminUser {
@@ -30,6 +30,8 @@ const PERMISSION_ITEMS = [
     { key: 'tickets', label: 'Support Tickets', icon: MessageSquareWarning },
     { key: 'packages', label: 'Point Packages', icon: Coins },
     { key: 'products', label: 'Store Products', icon: ShoppingBag },
+    { key: 'categories', label: 'Store Categories', icon: FolderKanban },
+    { key: 'redeem', label: 'Redeem Codes', icon: Ticket },
     { key: 'users', label: 'User Balances', icon: UserCog },
     { key: 'transactions', label: 'Transactions', icon: ReceiptText },
     { key: 'payments', label: 'Payment Settings', icon: CreditCard },

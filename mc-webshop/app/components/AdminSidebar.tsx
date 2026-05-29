@@ -78,8 +78,8 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
         { href: '/admin/tickets', label: t('admin.supportTickets'), icon: <MessageSquareWarning className="w-5 h-5" />, permissionKey: 'tickets' },
         { href: '/admin/store/packages', label: t('admin.pointPackages'), icon: <Coins className="w-5 h-5" />, permissionKey: 'packages' },
         { href: '/admin/store/products', label: t('admin.storeProducts'), icon: <ShoppingBag className="w-5 h-5" />, permissionKey: 'products' },
-        { href: '/admin/store/categories', label: 'Store Categories', icon: <FolderKanban className="w-5 h-5" />, permissionKey: 'products' },
-        { href: '/admin/store/redeem', label: 'Redeem Codes', icon: <Ticket className="w-5 h-5" />, permissionKey: 'products' },
+        { href: '/admin/store/categories', label: 'Store Categories', icon: <FolderKanban className="w-5 h-5" />, permissionKey: 'categories' },
+        { href: '/admin/store/redeem', label: 'Redeem Codes', icon: <Ticket className="w-5 h-5" />, permissionKey: 'redeem' },
         { href: '/admin/users', label: t('admin.userBalances'), icon: <UserCog className="w-5 h-5" />, permissionKey: 'users' },
         { href: '/admin/transactions', label: t('admin.transactions'), icon: <ReceiptText className="w-5 h-5" />, permissionKey: 'transactions' },
         { href: '/admin/payments', label: t('admin.settings.payment'), icon: <CreditCard className="w-5 h-5" />, permissionKey: 'payments' },
@@ -88,8 +88,8 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
     ];
 
     return (
-        <aside className={`fixed top-0 left-0 bottom-0 w-64 bg-[#1e1e1e] border-r border-white/10 z-40 flex flex-col pt-20 font-sans transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-            <div className="flex flex-col py-4 flex-1 overflow-y-auto">
+        <aside className={`fixed top-0 left-0 bottom-0 w-64 bg-[#1e1e1e] border-r border-white/10 z-40 flex flex-col overflow-hidden pt-20 font-sans transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+            <div className="flex flex-col py-4 flex-grow overflow-y-auto max-h-[calc(100vh-5rem)] scrollbar-none md:scrollbar-thin">
                 {items.map((item) => {
                     if (!hasPermission(item.permissionKey)) return null;
                     const active = item.matchFn ? item.matchFn(pathname) : isActive(item.href);

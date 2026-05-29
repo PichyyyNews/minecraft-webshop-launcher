@@ -10,8 +10,8 @@ const JWT_SECRET = () => process.env.JWT_SECRET || 'your-secret-key-change-this'
 const ALL_PERMISSIONS = [
     'dashboard', 'info', 'players', 'server', 'launcher',
     'console', 'wiki', 'tickets', 'packages', 'products',
-    'users', 'transactions', 'payments', 'database', 'settings',
-    'permissions',
+    'categories', 'redeem', 'users', 'transactions', 'payments',
+    'database', 'settings', 'permissions',
 ];
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
