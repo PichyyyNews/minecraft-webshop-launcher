@@ -19,6 +19,9 @@ export default function AdminSettingsPage() {
         emailProvider: 'smtp',
         teamTitle: '',
         teamSubtitle: '',
+        turnstileEnabled: 'false',
+        turnstileSiteKey: '',
+        turnstileSecretKey: '',
     });
 
 
@@ -231,6 +234,62 @@ export default function AdminSettingsPage() {
                                 </select>
                             </div>
                         )}
+
+                    </div>
+                </div>
+
+                {/* Cloudflare Turnstile Captcha Settings */}
+                <div className="bg-[#1e1e1e] rounded-2xl p-6 border border-white/5 shadow-xl mb-8">
+                    <h2 className="text-xl font-bold mb-6 text-[var(--primary)] flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                        </svg>
+                        Cloudflare Turnstile Captcha
+                    </h2>
+
+                    <div className="space-y-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-400 mb-2">
+                                Status (สถานะการเปิดใช้งาน)
+                            </label>
+                            <select
+                                name="turnstileEnabled"
+                                value={settings.turnstileEnabled || 'false'}
+                                onChange={handleSettingsChange}
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
+                            >
+                                <option value="false">Disabled (ปิดการใช้งาน)</option>
+                                <option value="true">Enabled (เปิดการใช้งาน)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-400 mb-2">
+                                Turnstile Site Key
+                            </label>
+                            <input
+                                type="text"
+                                name="turnstileSiteKey"
+                                value={settings.turnstileSiteKey || ''}
+                                onChange={handleSettingsChange}
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
+                                placeholder="1x00000000000000000000AA"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-400 mb-2">
+                                Turnstile Secret Key
+                            </label>
+                            <input
+                                type="password"
+                                name="turnstileSecretKey"
+                                value={settings.turnstileSecretKey || ''}
+                                onChange={handleSettingsChange}
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
+                                placeholder="••••••••"
+                            />
+                        </div>
 
                         <button
                             type="submit"
