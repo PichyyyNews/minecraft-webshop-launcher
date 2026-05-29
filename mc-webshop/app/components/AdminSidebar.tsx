@@ -89,7 +89,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
 
     return (
         <aside className={`fixed top-0 left-0 bottom-0 w-64 bg-[#1e1e1e] border-r border-white/10 z-40 flex flex-col overflow-hidden pt-20 font-sans transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-            <div className="flex flex-col py-4 flex-grow overflow-y-auto max-h-[calc(100vh-5rem)] scrollbar-none md:scrollbar-thin">
+            <div className="flex flex-col pt-4 pb-24 flex-grow overflow-y-auto max-h-[calc(100vh-5rem)] scrollbar-none md:scrollbar-thin">
                 {items.map((item) => {
                     if (!hasPermission(item.permissionKey)) return null;
                     const active = item.matchFn ? item.matchFn(pathname) : isActive(item.href);
