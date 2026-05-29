@@ -23,6 +23,7 @@ import {
     Database,
     ShieldCheck,
     FolderKanban,
+    Ticket,
 } from 'lucide-react';
 
 interface AdminSidebarProps {
@@ -78,6 +79,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
         { href: '/admin/store/packages', label: t('admin.pointPackages'), icon: <Coins className="w-5 h-5" />, permissionKey: 'packages' },
         { href: '/admin/store/products', label: t('admin.storeProducts'), icon: <ShoppingBag className="w-5 h-5" />, permissionKey: 'products' },
         { href: '/admin/store/categories', label: 'Store Categories', icon: <FolderKanban className="w-5 h-5" />, permissionKey: 'products' },
+        { href: '/admin/store/redeem', label: 'Redeem Codes', icon: <Ticket className="w-5 h-5" />, permissionKey: 'products' },
         { href: '/admin/users', label: t('admin.userBalances'), icon: <UserCog className="w-5 h-5" />, permissionKey: 'users' },
         { href: '/admin/transactions', label: t('admin.transactions'), icon: <ReceiptText className="w-5 h-5" />, permissionKey: 'transactions' },
         { href: '/admin/payments', label: t('admin.settings.payment'), icon: <CreditCard className="w-5 h-5" />, permissionKey: 'payments' },

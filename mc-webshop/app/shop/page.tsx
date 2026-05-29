@@ -53,6 +53,8 @@ export default function ShopPage() {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [userPoints, setUserPoints] = useState<number | null>(null);
+    const [redeemCodeInput, setRedeemCodeInput] = useState('');
+    const [redeeming, setRedeeming] = useState(false);
 
     const [showOfflineModal, setShowOfflineModal] = useState(false);
     const [showOfflineWarning, setShowOfflineWarning] = useState(false);
@@ -161,6 +163,52 @@ export default function ShopPage() {
             console.error('Failed to fetch products:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRedeemSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!redeemCodeInput.trim()) return;
+
+        setRedeeming(true);
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/api/redeem`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ code: redeemCodeInput.trim() })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                let successMessage = 'ยินดีด้วย! คุณได้รับของรางวัลเรียบร้อยแล้ว';
+                if (data.rewardType === 'points') {
+                    successMessage = `คุณได้รับรางวัลเป็น ${data.points} พอยท์!`;
+                    setUserPoints(data.userPoints);
+                    const userData = localStorage.getItem('user');
+                    if (userData) {
+                        const userObj = JSON.parse(userData);
+                        userObj.points = data.userPoints;
+                        localStorage.setItem('user', JSON.stringify(userObj));
+                    }
+                } else if (data.rewardType === 'product') {
+                    successMessage = `คุณได้รับสินค้า "${data.productName}" เรียบร้อยแล้ว! ไอเท็มกำลังจัดส่งในเกม...`;
+                }
+
+                showModal('ใช้งานโค้ดสำเร็จ', successMessage, 'success');
+                setRedeemCodeInput('');
+            } else {
+                showModal('เกิดข้อผิดพลาด', data.message || 'รหัสแลกของรางวัลไม่ถูกต้องหรือหมดอายุ', 'error');
+            }
+        } catch (error) {
+            console.error('Redeem Error:', error);
+            showModal('เกิดข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ในขณะนี้', 'error');
+        } finally {
+            setRedeeming(false);
         }
     };
 
@@ -306,20 +354,43 @@ export default function ShopPage() {
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-4 bg-[#1e1e1e] p-4 rounded-2xl border border-white/10 shadow-lg">
-                            <div className="text-right">
-                                <p className="text-xs text-gray-400 uppercase font-bold tracking-wider">{t('profile.points')}</p>
-                                <p className="text-xl font-bold text-[var(--primary)]">
-                                    {userPoints !== null ? userPoints.toLocaleString() : '0'} <span className="text-sm text-white">{t('shop.points')}</span>
-                                </p>
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
+                            {/* Points Balance Card */}
+                            <div className="flex items-center justify-between gap-4 bg-[#1e1e1e] p-4 rounded-2xl border border-white/10 shadow-lg flex-1 sm:flex-initial">
+                                <div className="text-right">
+                                    <p className="text-xs text-gray-400 uppercase font-bold tracking-wider">{t('profile.points')}</p>
+                                    <p className="text-xl font-bold text-[var(--primary)] whitespace-nowrap">
+                                        {userPoints !== null ? userPoints.toLocaleString() : '0'} <span className="text-sm text-white">{t('shop.points')}</span>
+                                    </p>
+                                </div>
+                                <Link
+                                    href="/shop/topup"
+                                    className="px-6 py-3 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg hover:shadow-[var(--primary)]/20 flex items-center gap-2 text-sm"
+                                >
+                                    <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                    {t('shop.topup')}
+                                </Link>
                             </div>
-                            <Link
-                                href="/shop/topup"
-                                className="px-6 py-3 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg hover:shadow-[var(--primary)]/20 flex items-center gap-2"
-                            >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                {t('shop.topup')}
-                            </Link>
+
+                            {/* Redeem Code Card */}
+                            <form onSubmit={handleRedeemSubmit} className="flex items-center gap-2 bg-[#1e1e1e] p-3 rounded-2xl border border-white/10 shadow-lg w-full sm:w-auto">
+                                <input
+                                    type="text"
+                                    value={redeemCodeInput}
+                                    onChange={(e) => setRedeemCodeInput(e.target.value)}
+                                    placeholder="กรอกรหัสแลกของรางวัล..."
+                                    className="bg-black/40 border border-white/10 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition-all duration-300 w-full sm:w-44 uppercase font-mono tracking-wider"
+                                    required
+                                    disabled={redeeming}
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={redeeming}
+                                    className="px-5 py-2.5 bg-white hover:bg-[var(--primary)] hover:text-black text-black font-bold rounded-xl transition-all text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                >
+                                    {redeeming ? 'กำลังแลก...' : 'ใช้งานโค้ด'}
+                                </button>
+                            </form>
                         </div>
                     </div>
 
