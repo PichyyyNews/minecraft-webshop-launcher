@@ -40,6 +40,7 @@ interface Product {
 export default function AdminProductsPage() {
     const { t } = useLanguage();
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<{ _id: string, name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,6 +97,7 @@ export default function AdminProductsPage() {
 
     useEffect(() => {
         fetchProducts();
+        fetchCategories();
     }, []);
 
     const showModal = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info', mode: 'alert' | 'confirm' = 'alert', onConfirm?: () => void) => {
@@ -130,6 +132,18 @@ export default function AdminProductsPage() {
         // Let's assume valid paths are either http, data, or uploads/...
 
         return cleanUrl;
+    };
+
+    const fetchCategories = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/categories`);
+            if (res.ok) {
+                const data = await res.json();
+                setCategories(data);
+            }
+        } catch (error) {
+            console.error('Error fetching categories:', error);
+        }
     };
 
     const fetchProducts = async () => {
@@ -486,9 +500,11 @@ export default function AdminProductsPage() {
                                         className="w-full bg-[#121212] border border-white/10 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
                                     >
                                         <option value="General">General</option>
-                                        <option value="Ranks">Ranks</option>
-                                        <option value="Items">Items</option>
-                                        <option value="Keys">Keys</option>
+                                        {categories.map((cat) => (
+                                            <option key={cat._id} value={cat.name}>
+                                                {cat.name}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>

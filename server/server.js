@@ -100,6 +100,7 @@ app.use('/api/cards', require('./routes/cards'));
 app.use('/api/socials', require('./routes/socials'));
 app.use('/api/point-packages', require('./routes/pointPackages'));
 app.use('/api/products', require('./routes/products'));
+app.use('/api/categories', require('./routes/categories'));
 app.use('/api/wiki', require('./routes/wiki'));
 app.use('/api/admin', require('./routes/adminAuth'));
 app.use('/api/admin', require('./routes/admin'));

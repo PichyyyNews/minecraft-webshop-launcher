@@ -48,6 +48,9 @@ export default function ShopPage() {
     const { t } = useLanguage();
     const router = useRouter();
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<{ _id: string, name: string }[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<string>('All');
+    const [searchQuery, setSearchQuery] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [userPoints, setUserPoints] = useState<number | null>(null);
 
@@ -115,12 +118,25 @@ export default function ShopPage() {
 
     useEffect(() => {
         fetchProducts();
+        fetchCategories();
         const user = localStorage.getItem('user');
         if (user) {
             const userData = JSON.parse(user);
             setUserPoints(userData.points);
         }
     }, []);
+
+    const fetchCategories = async () => {
+        try {
+            const res = await fetch(`${API_URL}/api/categories`);
+            if (res.ok) {
+                const data = await res.json();
+                setCategories(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch categories:', error);
+        }
+    };
 
     const fetchProducts = async () => {
         console.log('Fetching products from:', `${API_URL}/api/products`);
@@ -266,7 +282,12 @@ export default function ShopPage() {
         }
     };
 
-
+    const filteredProducts = products.filter(product => {
+        const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
+        const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              product.description.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCategory && matchesSearch;
+    });
 
     return (
         <AuthGuard>
@@ -302,6 +323,64 @@ export default function ShopPage() {
                         </div>
                     </div>
 
+                    {/* Search & Category Filter Section */}
+                    {!loading && products.length > 0 && (
+                        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 mb-8 bg-[#1e1e1e]/40 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
+                            {/* Horizontal Category Scroll */}
+                            <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-none flex-grow scroll-smooth">
+                                <button
+                                    onClick={() => setSelectedCategory('All')}
+                                    className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap cursor-pointer ${
+                                        selectedCategory === 'All'
+                                            ? 'bg-[var(--primary)] text-black font-bold shadow-lg shadow-[var(--primary)]/20 scale-105'
+                                            : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white hover:scale-102'
+                                    }`}
+                                >
+                                    {t('shop.all')}
+                                </button>
+                                {categories.map((cat) => (
+                                    <button
+                                        key={cat._id}
+                                        onClick={() => setSelectedCategory(cat.name)}
+                                        className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 whitespace-nowrap cursor-pointer ${
+                                            selectedCategory === cat.name
+                                                ? 'bg-[var(--primary)] text-black font-bold shadow-lg shadow-[var(--primary)]/20 scale-105'
+                                                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white hover:scale-102'
+                                        }`}
+                                    >
+                                        {cat.name}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Search Input */}
+                            <div className="relative w-full lg:w-80 flex-shrink-0">
+                                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-500">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </span>
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder={t('shop.search') || 'ค้นหาสินค้า...'}
+                                    className="w-full bg-black/40 border border-white/10 focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition-all duration-300"
+                                />
+                                {searchQuery && (
+                                    <button
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Products Grid */}
                     {loading ? (
                         <div className="flex justify-center py-20">
@@ -311,9 +390,13 @@ export default function ShopPage() {
                         <div className="text-center py-20 bg-[#1e1e1e] rounded-3xl border border-white/5">
                             <p className="text-gray-500 text-lg">{t('shop.outOfStock')}</p>
                         </div>
+                    ) : filteredProducts.length === 0 ? (
+                        <div className="text-center py-20 bg-[#1e1e1e] rounded-3xl border border-white/5">
+                            <p className="text-gray-500 text-lg">ไม่พบสินค้าในหมวดหมู่หรือผลการค้นหานี้</p>
+                        </div>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {products.map((product) => (
+                            {filteredProducts.map((product) => (
                                 <div key={product._id} className="bg-[#1e1e1e] rounded-2xl overflow-hidden border border-white/5 hover:border-[var(--primary)]/50 transition-all duration-300 hover:-translate-y-2 shadow-xl group flex flex-col">
                                     {/* Image Section */}
                                     <div className="h-64 bg-[#181818] relative overflow-hidden flex items-center justify-center">
