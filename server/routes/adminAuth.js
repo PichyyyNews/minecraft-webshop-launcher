@@ -1,57 +1,125 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const AdminUser = require('../models/AdminUser');
 
-// Admin login
-router.post('/login', async (req, res) => {
-    const { password } = req.body;
+const JWT_SECRET = () => process.env.JWT_SECRET || 'your-secret-key-change-this';
 
-    // Get admin password from environment variable
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '1150';
-    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
+// All sidebar permission keys
+const ALL_PERMISSIONS = [
+    'dashboard', 'info', 'players', 'server', 'launcher',
+    'console', 'wiki', 'tickets', 'packages', 'products',
+    'users', 'transactions', 'payments', 'database', 'settings',
+    'permissions',
+];
 
-    if (password === ADMIN_PASSWORD) {
-        // Generate JWT token
-        const token = jwt.sign(
-            { role: 'admin', timestamp: Date.now() },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
+// ─── Middleware ────────────────────────────────────────────────────────────────
 
-        res.json({
-            success: true,
-            token,
-            message: 'Login successful'
-        });
-    } else {
-        res.status(401).json({
-            success: false,
-            message: 'Invalid password'
-        });
-    }
-});
-
-// Verify token middleware
-const verifyToken = (req, res, next) => {
+const verifyAdminToken = (req, res, next) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
-    const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
-
-    if (!token) {
-        return res.status(401).json({ success: false, message: 'No token provided' });
-    }
+    if (!token) return res.status(401).json({ success: false, message: 'No token provided' });
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.admin = decoded;
+        const decoded = jwt.verify(token, JWT_SECRET());
+        req.adminUser = decoded;
         next();
     } catch (error) {
         res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
 };
 
-// Verify token endpoint
-router.post('/verify', verifyToken, (req, res) => {
-    res.json({ success: true, message: 'Token is valid' });
+// Root-only middleware
+const requireRoot = (req, res, next) => {
+    if (!req.adminUser?.isRoot) {
+        return res.status(403).json({ success: false, message: 'Root access required' });
+    }
+    next();
+};
+
+// ─── POST /login ───────────────────────────────────────────────────────────────
+router.post('/login', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ success: false, message: 'Username and password are required' });
+    }
+
+    const ADMIN_ROOT_USER = (process.env.ADMIN_ROOT_USER || 'root').toLowerCase();
+    const ADMIN_ROOT_PASS = process.env.ADMIN_ROOT_PASS || process.env.ADMIN_PASSWORD || 'root';
+
+    // ── Check root credentials first ─────────────────────────────────────────
+    if (username.toLowerCase() === ADMIN_ROOT_USER && password === ADMIN_ROOT_PASS) {
+        const token = jwt.sign(
+            {
+                role: 'admin',
+                username: ADMIN_ROOT_USER,
+                isRoot: true,
+                permissions: ALL_PERMISSIONS,
+            },
+            JWT_SECRET(),
+            { expiresIn: '24h' }
+        );
+
+        return res.json({
+            success: true,
+            token,
+            username: ADMIN_ROOT_USER,
+            isRoot: true,
+            permissions: ALL_PERMISSIONS,
+            message: 'Login successful',
+        });
+    }
+
+    // ── Check DB admin users ──────────────────────────────────────────────────
+    try {
+        const adminUser = await AdminUser.findOne({ username: username.toLowerCase() });
+        if (!adminUser) {
+            return res.status(401).json({ success: false, message: 'Invalid username or password' });
+        }
+
+        const isMatch = await adminUser.matchPassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ success: false, message: 'Invalid username or password' });
+        }
+
+        const token = jwt.sign(
+            {
+                role: 'admin',
+                username: adminUser.username,
+                isRoot: false,
+                permissions: adminUser.permissions,
+            },
+            JWT_SECRET(),
+            { expiresIn: '24h' }
+        );
+
+        return res.json({
+            success: true,
+            token,
+            username: adminUser.username,
+            isRoot: false,
+            permissions: adminUser.permissions,
+            message: 'Login successful',
+        });
+    } catch (error) {
+        console.error('[AdminAuth] Login error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
 });
 
+// ─── POST /verify ──────────────────────────────────────────────────────────────
+router.post('/verify', verifyAdminToken, (req, res) => {
+    res.json({
+        success: true,
+        username: req.adminUser.username,
+        isRoot: req.adminUser.isRoot,
+        permissions: req.adminUser.permissions,
+    });
+});
+
+// ─── Export helpers ────────────────────────────────────────────────────────────
 module.exports = router;
+module.exports.verifyAdminToken = verifyAdminToken;
+module.exports.requireRoot = requireRoot;
+module.exports.ALL_PERMISSIONS = ALL_PERMISSIONS;

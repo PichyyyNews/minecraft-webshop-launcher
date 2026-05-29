@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -13,6 +13,21 @@ interface AdminNavbarProps {
 export default function AdminNavbar({ onMenuClick }: AdminNavbarProps) {
     const router = useRouter();
     const { t } = useLanguage();
+    const [adminUsername, setAdminUsername] = useState('Admin');
+    const [isRoot, setIsRoot] = useState(false);
+
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('adminUser');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                setAdminUsername(parsed.username || 'Admin');
+                setIsRoot(parsed.isRoot === true);
+            }
+        } catch {
+            // ignore
+        }
+    }, []);
 
     const [modalProps, setModalProps] = useState({
         isOpen: false,
@@ -24,23 +39,15 @@ export default function AdminNavbar({ onMenuClick }: AdminNavbarProps) {
     });
 
     const showModal = (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info', mode: 'alert' | 'confirm' = 'alert', onConfirm?: () => void) => {
-        setModalProps({
-            isOpen: true,
-            title,
-            message,
-            type,
-            mode,
-            onConfirm: onConfirm || (() => { }),
-        });
+        setModalProps({ isOpen: true, title, message, type, mode, onConfirm: onConfirm || (() => { }) });
     };
 
-    const closeModal = () => {
-        setModalProps(prev => ({ ...prev, isOpen: false }));
-    };
+    const closeModal = () => setModalProps(prev => ({ ...prev, isOpen: false }));
 
     const handleLogout = () => {
         showModal(t('admin.logoutConfirmTitle'), t('admin.logoutConfirmDesc'), 'warning', 'confirm', () => {
             localStorage.removeItem('adminToken');
+            localStorage.removeItem('adminUser');
             router.push('/admin/login');
         });
     };
@@ -60,13 +67,25 @@ export default function AdminNavbar({ onMenuClick }: AdminNavbarProps) {
                     </div>
                     <h1 className="text-xl font-bold text-white hidden sm:block">{t('admin.panel')}</h1>
                 </div>
-                <button
-                    onClick={handleLogout}
-                    className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-medium rounded-lg transition-colors border border-red-500/20 flex items-center gap-2"
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                    {t('admin.logout')}
-                </button>
+
+                <div className="flex items-center gap-3">
+                    {/* Admin badge */}
+                    <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg">
+                        <div className={`w-2 h-2 rounded-full ${isRoot ? 'bg-[var(--primary)]' : 'bg-blue-400'}`} />
+                        <span className="text-sm text-gray-300 font-medium">{adminUsername}</span>
+                        {isRoot && (
+                            <span className="text-xs bg-[var(--primary)]/20 text-[var(--primary)] px-1.5 py-0.5 rounded font-bold">ROOT</span>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={handleLogout}
+                        className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-medium rounded-lg transition-colors border border-red-500/20 flex items-center gap-2"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        {t('admin.logout')}
+                    </button>
+                </div>
             </nav>
             <Modal
                 isOpen={modalProps.isOpen}

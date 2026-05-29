@@ -103,6 +103,7 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/wiki', require('./routes/wiki'));
 app.use('/api/admin', require('./routes/adminAuth'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/admin-users', require('./routes/adminUsers'));
 app.use('/api/tickets', require('./routes/tickets'));
 app.use('/api/tags', require('./routes/tags'));
 app.use('/api/rcon', require('./routes/rcon'));
