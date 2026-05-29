@@ -195,8 +195,14 @@ export default function AdminPermissionsPage() {
         }
     };
 
-    // ── Shared permission grid UI ─────────────────────────────────────────────
-    const PermissionGrid = () => (
+// ── Standalone Permission Grid Component ───────────────────────────────────
+interface PermissionGridProps {
+    formPermissions: string[];
+    onToggle: (key: string) => void;
+}
+
+function PermissionGrid({ formPermissions, onToggle }: PermissionGridProps) {
+    return (
         <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
             {PERMISSION_ITEMS.map(({ key, label, icon: Icon }) => {
                 const enabled = formPermissions.includes(key);
@@ -204,7 +210,7 @@ export default function AdminPermissionsPage() {
                     <button
                         key={key}
                         type="button"
-                        onClick={() => togglePermission(key)}
+                        onClick={() => onToggle(key)}
                         className={`flex items-center justify-between px-4 py-3 rounded-xl border transition-all ${enabled
                             ? 'bg-[var(--primary)]/10 border-[var(--primary)]/40 text-white'
                             : 'bg-white/3 border-white/8 text-gray-400 hover:border-white/20'
@@ -222,6 +228,7 @@ export default function AdminPermissionsPage() {
             })}
         </div>
     );
+}
 
     return (
         <div className="min-h-screen bg-[#121212] font-sans">
@@ -373,7 +380,7 @@ export default function AdminPermissionsPage() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-400 mb-2">Permissions ({formPermissions.length}/{PERMISSION_ITEMS.length})</label>
-                                <PermissionGrid />
+                                <PermissionGrid formPermissions={formPermissions} onToggle={togglePermission} />
                             </div>
                             {formError && <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
                             <div className="flex gap-3 pt-1">
@@ -435,7 +442,7 @@ export default function AdminPermissionsPage() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-400 mb-2">Permissions ({formPermissions.length}/{PERMISSION_ITEMS.length})</label>
-                                <PermissionGrid />
+                                <PermissionGrid formPermissions={formPermissions} onToggle={togglePermission} />
                             </div>
                             {formError && <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{formError}</p>}
                             <div className="flex gap-3 pt-1">

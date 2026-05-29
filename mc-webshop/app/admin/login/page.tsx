@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { API_URL } from '../../utils/config';
+import { Turnstile } from '@marsidev/react-turnstile';
 
 export default function AdminLoginPage() {
     const { t } = useLanguage();
@@ -11,18 +12,37 @@ export default function AdminLoginPage() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+    const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+    const [turnstileToken, setTurnstileToken] = useState('');
     const router = useRouter();
+
+    useEffect(() => {
+        fetch(`${API_URL}/api/settings`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.turnstileSiteKey) setTurnstileSiteKey(data.turnstileSiteKey);
+                if (data.turnstileEnabled === 'true') setTurnstileEnabled(true);
+            })
+            .catch(err => console.error('Failed to fetch settings:', err));
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setLoading(true);
 
+        if (turnstileEnabled && !turnstileToken) {
+            setError('Please complete the Captcha check.');
+            setLoading(false);
+            return;
+        }
+
         try {
             const res = await fetch(`${API_URL}/api/admin/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify({ username, password, turnstileToken }),
             });
 
             const data = await res.json();
@@ -94,6 +114,17 @@ export default function AdminLoginPage() {
                                 autoComplete="current-password"
                             />
                         </div>
+
+                        {turnstileEnabled && turnstileSiteKey && (
+                            <div className="flex justify-center my-4">
+                                <Turnstile
+                                    siteKey={turnstileSiteKey}
+                                    onSuccess={(token) => setTurnstileToken(token)}
+                                    onError={() => setError('Captcha verification error. Please reload.')}
+                                    onExpire={() => setTurnstileToken('')}
+                                />
+                            </div>
+                        )}
 
                         {error && (
                             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm flex items-center gap-2">

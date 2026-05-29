@@ -143,6 +143,14 @@ app.get('/api/settings', async (req, res) => {
       settingsMap.siteTitle = 'MC Webshop';
     }
 
+    // Turnstile public site key configuration defaults (for front-end)
+    if (!settingsMap.turnstileSiteKey) {
+      settingsMap.turnstileSiteKey = process.env.TURNSTILE_SITE_KEY || '1x00000000000000000000AA';
+    }
+    if (!settingsMap.turnstileEnabled) {
+      settingsMap.turnstileEnabled = 'false';
+    }
+
     res.json(settingsMap);
   } catch (error) {
     // Don't log errors to console in production

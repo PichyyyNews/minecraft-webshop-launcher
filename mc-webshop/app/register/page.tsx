@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useLanguage } from '../contexts/LanguageContext';
 import { API_URL } from '../utils/config';
+import { Turnstile } from '@marsidev/react-turnstile';
 
 export default function RegisterPage() {
   const { t } = useLanguage();
@@ -15,6 +16,9 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [logoUrl, setLogoUrl] = useState('https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/logos/Global-Header_MCCB-Logo_300x51.svg');
   const [backgroundUrl, setBackgroundUrl] = useState('/defaults/bg.png');
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
   const router = useRouter();
 
   // Helper to prepend API_URL to relative paths
@@ -30,6 +34,8 @@ export default function RegisterPage() {
       .then(data => {
         if (data.logoUrl) setLogoUrl(data.logoUrl);
         if (data.backgroundUrl) setBackgroundUrl(data.backgroundUrl);
+        if (data.turnstileSiteKey) setTurnstileSiteKey(data.turnstileSiteKey);
+        if (data.turnstileEnabled === 'true') setTurnstileEnabled(true);
       })
       .catch(err => console.error('Failed to fetch settings:', err));
   }, []);
@@ -39,13 +45,19 @@ export default function RegisterPage() {
     setIsLoading(true);
     setError('');
 
+    if (turnstileEnabled && !turnstileToken) {
+      setError('Please complete the Captcha check.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, turnstileToken }),
       });
 
       if (res.ok) {
@@ -127,6 +139,17 @@ export default function RegisterPage() {
             />
             <p className="mt-2 text-xs text-gray-500">Must be at least 8 characters long.</p>
           </div>
+
+          {turnstileEnabled && turnstileSiteKey && (
+            <div className="flex justify-center my-4">
+              <Turnstile
+                siteKey={turnstileSiteKey}
+                onSuccess={(token) => setTurnstileToken(token)}
+                onError={() => setError('Captcha verification error. Please reload.')}
+                onExpire={() => setTurnstileToken('')}
+              />
+            </div>
+          )}
 
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
