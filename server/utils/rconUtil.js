@@ -114,4 +114,78 @@ const executeRconCommand = async (command, senderName = 'System') => {
     return { response };
 };
 
-module.exports = { executeRconCommand, getRconSettings };
+/**
+ * Checks if a player is online in-game via RCON list and AuthMe isLogged status
+ * @param {string} username - The Minecraft username of the player
+ * @returns {Promise<{online: boolean, cannotVerify: boolean}>}
+ */
+const checkPlayerOnline = async (username) => {
+    if (!username) return { online: false, cannotVerify: true };
+
+    let rconOnline = null;
+    let authmeOnline = null;
+    let rconClient = null;
+
+    // 1. RCON check
+    try {
+        const config = await getRconSettings();
+        if (config.rconHost && config.rconPassword) {
+            const host = config.rconHost;
+            const port = parseInt(config.rconPort) || 25575;
+            const password = config.rconPassword;
+
+            rconClient = new util.RCON();
+            await rconClient.connect(host, port);
+            await rconClient.login(password);
+
+            const response = await rconClient.execute('list');
+            const cleanResponse = response.replace(/§[0-9a-fk-or]/gi, '');
+            const lowerResponse = cleanResponse.toLowerCase();
+            const lowerUsername = username.toLowerCase();
+
+            const parts = lowerResponse.split(':');
+            const playerListStr = parts.length > 1 ? parts[1] : parts[0];
+            const players = playerListStr.split(/[, \n]+/).map(p => p.trim()).filter(p => p);
+
+            rconOnline = players.includes(lowerUsername);
+        }
+    } catch (error) {
+        console.error('RCON Check Online Error:', error.message);
+    } finally {
+        if (rconClient) {
+            try { await rconClient.close(); } catch (e) { }
+        }
+    }
+
+    // 2. AuthMe MySQL check
+    try {
+        const { getPool, getTableName } = require('./authmeDb');
+        const db = getPool();
+        const tableName = getTableName();
+        if (db) {
+            const [rows] = await db.execute(
+                `SELECT isLogged FROM \`${tableName}\` WHERE LOWER(username) = LOWER(?) LIMIT 1`,
+                [username]
+            );
+            if (rows.length > 0) {
+                authmeOnline = rows[0].isLogged === 1;
+            }
+        }
+    } catch (error) {
+        console.error('AuthMe Check Online Error:', error.message);
+    }
+
+    const hasRcon = rconOnline !== null;
+    const hasAuthme = authmeOnline !== null;
+
+    if (!hasRcon && !hasAuthme) {
+        return { online: false, cannotVerify: true };
+    }
+
+    return {
+        online: (rconOnline === true) || (authmeOnline === true),
+        cannotVerify: false
+    };
+};
+
+module.exports = { executeRconCommand, getRconSettings, checkPlayerOnline };

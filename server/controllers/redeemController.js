@@ -3,7 +3,7 @@ const Redemption = require('../models/Redemption');
 const User = require('../models/User');
 const Product = require('../models/Product');
 const Purchase = require('../models/Purchase');
-const { executeRconCommand } = require('../utils/rconUtil');
+const { executeRconCommand, checkPlayerOnline } = require('../utils/rconUtil');
 
 // Helper to generate a random code
 const generateRandomCode = (length = 10) => {
@@ -193,6 +193,14 @@ exports.redeemCode = async (req, res) => {
                 // Revert usedCount increment
                 await RedeemCode.updateOne({ _id: redeemCode._id }, { $inc: { usedCount: -1 } });
                 return res.status(400).json({ message: 'สินค้าของรหัสนี้ไม่มีอยู่ในระบบแล้ว' });
+            }
+
+            // Check if player is online in-game first before doing any actions
+            const onlineStatus = await checkPlayerOnline(user.name);
+            if (!onlineStatus.online && !onlineStatus.cannotVerify) {
+                // Revert usedCount increment
+                await RedeemCode.updateOne({ _id: redeemCode._id }, { $inc: { usedCount: -1 } });
+                return res.status(400).json({ message: 'คุณไม่ได้ออนไลน์อยู่ในเซิร์ฟเวอร์ขณะนี้ กรุณาเข้าสู่เกมก่อนใช้โค้ดแลกสินค้า' });
             }
 
             productName = product.name;

@@ -20,6 +20,38 @@ export default function ProfilePage() {
     const [purchases, setPurchases] = useState<any[]>([]);
     const [transactions, setTransactions] = useState<any[]>([]);
     const [activeTab, setActiveTab] = useState<'purchases' | 'topups'>('purchases');
+    const [isOnline, setIsOnline] = useState(false);
+
+    useEffect(() => {
+        if (!user?.name) {
+            setIsOnline(false);
+            return;
+        }
+
+        const checkOnlineStatus = async () => {
+            try {
+                const res = await fetch(`${API_URL}/api/rcon/check-online`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify({ username: user.name })
+                });
+                const data = await res.json();
+                if (data && typeof data.online === 'boolean') {
+                    setIsOnline(data.online);
+                }
+            } catch (err) {
+                console.error('Failed to check online status:', err);
+            }
+        };
+
+        checkOnlineStatus();
+
+        const interval = setInterval(checkOnlineStatus, 30000);
+        return () => clearInterval(interval);
+    }, [user?.name]);
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -128,6 +160,20 @@ export default function ProfilePage() {
                                 </div>
                             )}
                             <p className="mt-6 text-xl font-bold text-white">{user.name}</p>
+                            
+                            {/* Online/Offline Status Badge */}
+                            <div className="mt-2 mb-1 flex items-center gap-2 bg-[#2a2a2a]/60 px-3 py-1.5 rounded-full border border-white/5 shadow-inner">
+                                <span className="relative flex h-2.5 w-2.5">
+                                    {isOnline && (
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                    )}
+                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-green-500' : 'bg-gray-500'}`}></span>
+                                </span>
+                                <span className={`text-xs font-bold uppercase tracking-wide ${isOnline ? 'text-green-400' : 'text-gray-400'}`}>
+                                    {isOnline ? 'ออนไลน์ในเกม (In-Game)' : 'ออฟไลน์ (Offline)'}
+                                </span>
+                            </div>
+
                             <p className="text-gray-500 text-sm uppercase tracking-wider font-bold mt-1">{t('admin.users.role')}</p>
                             <div className="mt-4 px-4 py-2 bg-[var(--primary)]/10 text-[var(--primary)] rounded-lg font-bold">
                                 {user.points?.toLocaleString() || 0} {t('shop.points')}

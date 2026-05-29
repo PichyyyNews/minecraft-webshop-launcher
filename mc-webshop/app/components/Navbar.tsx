@@ -14,6 +14,7 @@ export default function Navbar() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [logoUrl, setLogoUrl] = useState('https://www.minecraft.net/content/dam/minecraftnet/games/minecraft/logos/Global-Header_MCCB-Logo_300x51.svg');
     const { t } = useLanguage();
+    const [isOnline, setIsOnline] = useState(false);
 
     const [modalProps, setModalProps] = useState({
         isOpen: false,
@@ -111,6 +112,37 @@ export default function Navbar() {
         };
     }, []);
 
+    useEffect(() => {
+        if (!user?.name) {
+            setIsOnline(false);
+            return;
+        }
+
+        const checkOnlineStatus = async () => {
+            try {
+                const res = await fetch(`${API_URL}/api/rcon/check-online`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify({ username: user.name })
+                });
+                const data = await res.json();
+                if (data && typeof data.online === 'boolean') {
+                    setIsOnline(data.online);
+                }
+            } catch (err) {
+                console.error('Failed to check online status:', err);
+            }
+        };
+
+        checkOnlineStatus();
+
+        const interval = setInterval(checkOnlineStatus, 30000);
+        return () => clearInterval(interval);
+    }, [user?.name]);
+
     const handleLogout = () => {
         showModal(t('nav.logoutConfirmTitle'), t('nav.logoutConfirmDesc'), 'warning', 'confirm', () => {
             localStorage.removeItem('token');
@@ -174,7 +206,11 @@ export default function Navbar() {
                                         {user.name}
                                     </span>
                                 )}
-                                <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#2a2a2a] ring-2 ring-transparent group-hover:ring-[var(--primary)] transition-all">
+                                <div className={`w-8 h-8 rounded-lg overflow-hidden bg-[#2a2a2a] ring-2 transition-all ${
+                                    isOnline 
+                                        ? 'ring-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse'
+                                        : 'ring-transparent group-hover:ring-[var(--primary)]'
+                                }`}>
                                     {user && uuid ? (
                                         <ImageWithSkeleton
                                             src={`https://api.mineatar.io/face/${uuid}`}
@@ -218,6 +254,15 @@ export default function Navbar() {
                                                     <p className="text-xs text-gray-400 uppercase font-bold tracking-wider">{t('nav.balance')}</p>
                                                     <p className="text-[var(--primary)] font-bold">{user.points?.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) || 0} {t('shop.points')}</p>
                                                 </div>
+                                                {isOnline && (
+                                                    <div className="px-4 py-1.5 bg-green-500/10 border-b border-white/5 mb-1 flex items-center gap-2 text-xs text-green-400">
+                                                        <span className="relative flex h-2 w-2">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                                        </span>
+                                                        <span>กำลังอยู่ในเกม (In-Game)</span>
+                                                    </div>
+                                                )}
                                                 <Link
                                                     href="/profile"
                                                     className="block px-4 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors rounded-lg"
@@ -268,7 +313,11 @@ export default function Navbar() {
                             ) : (
                                 <>
                                     <div className="px-4 py-2 flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#2a2a2a]">
+                                        <div className={`w-8 h-8 rounded-lg overflow-hidden bg-[#2a2a2a] ring-2 transition-all ${
+                                            isOnline 
+                                                ? 'ring-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] animate-pulse'
+                                                : 'ring-transparent'
+                                        }`}>
                                             {uuid ? (
                                                 <ImageWithSkeleton src={`https://api.mineatar.io/face/${uuid}`} alt={user.name} className="w-full h-full object-cover" />
                                             ) : (
@@ -277,7 +326,15 @@ export default function Navbar() {
                                                 </div>
                                             )}
                                         </div>
-                                        <span className="text-white font-medium">{user.name}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-white font-medium">{user.name}</span>
+                                            {isOnline && (
+                                                <span className="text-[10px] text-green-400 flex items-center gap-1 mt-0.5">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                                    กำลังอยู่ในเกม (In-Game)
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <Link href="/profile" onClick={() => setIsMobileMenuOpen(false)} className="block px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white rounded-lg transition-colors font-medium">{t('nav.profile')}</Link>
                                     {user.role === 'admin' && (
