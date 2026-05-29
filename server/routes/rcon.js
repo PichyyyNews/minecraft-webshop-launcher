@@ -55,7 +55,7 @@ router.get('/status', async (req, res) => {
 });
 
 // @route   POST /api/rcon/check-online
-// @desc    Check if a player is online
+// @desc    Check if a player is online via RCON + AuthMe dual verification
 router.post('/check-online', async (req, res) => {
     const { username } = req.body;
     if (!username) {
@@ -63,60 +63,93 @@ router.post('/check-online', async (req, res) => {
     }
 
     let rconClient = null;
+    let rconOnline = null;
+    let authmeOnline = null;
+    let rconError = null;
+    let authmeError = null;
+
+    // ─── 1. RCON check ────────────────────────────────────────────────────────
     try {
         const config = await getRconSettings();
-        if (!config.rconHost || !config.rconPassword) {
-            return res.json({ online: false, message: 'RCON not configured' });
+        if (config.rconHost && config.rconPassword) {
+            const host = config.rconHost;
+            const port = parseInt(config.rconPort) || 25575;
+            const password = config.rconPassword;
+
+            rconClient = new util.RCON();
+            await rconClient.connect(host, port);
+            await rconClient.login(password);
+
+            const response = await rconClient.execute('list');
+            console.log(`[DEBUG] Check Online - User: ${username}, RCON Response: ${response}`);
+
+            const cleanResponse = response.replace(/§[0-9a-fk-or]/gi, '');
+            const lowerResponse = cleanResponse.toLowerCase();
+            const lowerUsername = username.toLowerCase();
+
+            const parts = lowerResponse.split(':');
+            const playerListStr = parts.length > 1 ? parts[1] : parts[0];
+            const players = playerListStr.split(/[, \n]+/).map(p => p.trim()).filter(p => p);
+
+            rconOnline = players.includes(lowerUsername);
+            console.log(`[DEBUG] RCON Parsed Players: ${JSON.stringify(players)}, Is Online: ${rconOnline}`);
+        } else {
+            rconError = 'RCON not configured';
         }
-
-        const host = config.rconHost;
-        const port = parseInt(config.rconPort) || 25575;
-        const password = config.rconPassword;
-
-        rconClient = new util.RCON();
-        await rconClient.connect(host, port);
-        await rconClient.login(password);
-
-        // Command 'list' usually returns "There are x/y players online: player1, player2"
-        const response = await rconClient.execute('list');
-
-        console.log(`[DEBUG] Check Online - User: ${username}, RCON Response: ${response}`);
-
-        // Strip color codes (section sign + char)
-        const cleanResponse = response.replace(/§[0-9a-fk-or]/gi, '');
-
-        // Normalize to lowercase
-        const lowerResponse = cleanResponse.toLowerCase();
-        const lowerUsername = username.toLowerCase();
-
-        // Robust check:
-        // 1. Split by ':' to get the list part (if standard vanilla/spigot format)
-        // 2. If no ':', use the whole string
-        // 3. Split by ',' or space to get individual names
-        // 4. Check for exact match
-
-        const parts = lowerResponse.split(':');
-        const playerListStr = parts.length > 1 ? parts[1] : parts[0];
-
-        // Split by comma or whitespace, filter empty strings
-        const players = playerListStr.split(/[, \n]+/).map(p => p.trim()).filter(p => p);
-
-        const isOnline = players.includes(lowerUsername);
-
-        console.log(`[DEBUG] Parsed Players: ${JSON.stringify(players)}, Is Online: ${isOnline}`);
-
-        res.json({ online: isOnline, debug: { response, cleanResponse, players } });
-
     } catch (error) {
-        console.error('Check Online Error:', error);
-        res.status(500).json({ error: 'Failed to check online status' });
+        console.error('[Check Online] RCON Error:', error.message);
+        rconError = error.message;
     } finally {
         if (rconClient) {
-            try {
-                await rconClient.close();
-            } catch (e) { }
+            try { await rconClient.close(); } catch (e) { }
         }
     }
+
+    // ─── 2. AuthMe MySQL check ─────────────────────────────────────────────────
+    try {
+        const { getPool, getTableName } = require('../utils/authmeDb');
+        const db = getPool();
+        const tableName = getTableName();
+
+        const [rows] = await db.execute(
+            `SELECT isLogged FROM \`${tableName}\` WHERE LOWER(username) = LOWER(?) LIMIT 1`,
+            [username]
+        );
+
+        if (rows.length > 0) {
+            authmeOnline = rows[0].isLogged === 1;
+        } else {
+            authmeOnline = null; // user not found in authme
+        }
+        console.log(`[DEBUG] AuthMe isLogged for "${username}": ${authmeOnline}`);
+    } catch (error) {
+        console.error('[Check Online] AuthMe Error:', error.message);
+        authmeError = error.message;
+    }
+
+    // ─── 3. Decision logic ─────────────────────────────────────────────────────
+    // If either method confirms online → online
+    // If both say offline → offline
+    // If both unavailable → cannotVerify: true
+
+    const hasRcon = rconOnline !== null;
+    const hasAuthme = authmeOnline !== null;
+
+    let online = false;
+    let cannotVerify = false;
+
+    if (!hasRcon && !hasAuthme) {
+        cannotVerify = true;
+    } else {
+        online = (rconOnline === true) || (authmeOnline === true);
+    }
+
+    res.json({
+        online,
+        cannotVerify,
+        rcon: { checked: hasRcon, online: rconOnline, error: rconError },
+        authme: { checked: hasAuthme, online: authmeOnline, error: authmeError },
+    });
 });
 
 module.exports = router;

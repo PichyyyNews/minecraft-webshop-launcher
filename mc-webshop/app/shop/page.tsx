@@ -52,8 +52,10 @@ export default function ShopPage() {
     const [userPoints, setUserPoints] = useState<number | null>(null);
 
     const [showOfflineModal, setShowOfflineModal] = useState(false);
+    const [showOfflineWarning, setShowOfflineWarning] = useState(false);
     const [targetUsername, setTargetUsername] = useState('');
     const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
+    const [pendingIsGift, setPendingIsGift] = useState(false);
     const [checkingOnline, setCheckingOnline] = useState(false);
 
     const [modalProps, setModalProps] = useState({
@@ -146,19 +148,25 @@ export default function ShopPage() {
         }
     };
 
-    const checkOnlineStatus = async (username: string) => {
+    const checkOnlineStatus = async (username: string): Promise<{ online: boolean; cannotVerify: boolean }> => {
         try {
-            const res = await fetch(`${API_URL}/api/server/online`);
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${API_URL}/api/rcon/check-online`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({ username }),
+            });
             if (res.ok) {
                 const data = await res.json();
-                // Assuming data.players is an array of online players
-                const onlinePlayers = data.players || [];
-                return onlinePlayers.some((p: any) => (typeof p === 'string' ? p : p.name).toLowerCase() === username.toLowerCase());
+                return { online: data.online === true, cannotVerify: data.cannotVerify === true };
             }
-            return false;
+            return { online: false, cannotVerify: true };
         } catch (error) {
             console.error('Error checking online status:', error);
-            return false;
+            return { online: false, cannotVerify: true };
         }
     };
 
@@ -199,7 +207,8 @@ export default function ShopPage() {
 
     const handleGift = (product: Product) => {
         setPendingProduct(product);
-        setTargetUsername(''); // Clear username for gift
+        setPendingIsGift(true);
+        setTargetUsername('');
         setShowOfflineModal(true);
     };
 
@@ -225,29 +234,39 @@ export default function ShopPage() {
         const userData = localStorage.getItem('user');
         const currentUsername = userData ? JSON.parse(userData).name : '';
 
-        const isOnline = await checkOnlineStatus(currentUsername);
+        const { online, cannotVerify } = await checkOnlineStatus(currentUsername);
         setCheckingOnline(false);
 
-        if (isOnline) {
-            showModal(
-                t('shop.confirmBuy'),
-                `${t('shop.confirmBuyDesc')} (${product.name} - ${product.price} ${t('shop.points')})`,
-                'info',
-                'confirm',
-                () => processPurchase(product, currentUsername)
-            );
+        if (online || cannotVerify) {
+            if (online) {
+                // Player confirmed online → show confirm and buy
+                showModal(
+                    t('shop.confirmBuy'),
+                    `${t('shop.confirmBuyDesc')} (${product.name} - ${product.price} ${t('shop.points')})`,
+                    'info',
+                    'confirm',
+                    () => processPurchase(product, currentUsername)
+                );
+            } else {
+                // cannotVerify → skip warning and go straight to confirm
+                showModal(
+                    t('shop.confirmBuy'),
+                    `${t('shop.confirmBuyDesc')} (${product.name} - ${product.price} ${t('shop.points')})`,
+                    'info',
+                    'confirm',
+                    () => processPurchase(product, currentUsername)
+                );
+            }
         } else {
+            // Confirmed offline by at least one system
             setPendingProduct(product);
+            setPendingIsGift(false);
             setTargetUsername(currentUsername);
-            setShowOfflineModal(true);
+            setShowOfflineWarning(true);
         }
     };
 
-    const handleOfflinePurchaseSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!pendingProduct || !targetUsername) return;
-        await processPurchase(pendingProduct, targetUsername);
-    };
+
 
     return (
         <AuthGuard>
@@ -402,51 +421,101 @@ export default function ShopPage() {
                     )}
                 </main>
 
-                {/* Offline/Gift Warning Modal */}
-                {showOfflineModal && pendingProduct && (
+                {/* ── Offline Warning Modal (player not online) ─────────────────── */}
+                {showOfflineWarning && pendingProduct && (
                     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="bg-[#1e1e1e] border border-yellow-500/30 rounded-2xl w-full max-w-md shadow-2xl">
+                            <div className="p-6">
+                                {/* Icon + Title */}
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+                                        <svg className="w-7 h-7 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-white">คุณไม่ได้อยู่ในเกม</h2>
+                                        <p className="text-yellow-400 text-sm">ไม่พบผู้เล่นในเซิร์ฟเวอร์ขณะนี้</p>
+                                    </div>
+                                </div>
+
+                                {/* Info */}
+                                <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 mb-5">
+                                    <p className="text-gray-300 text-sm leading-relaxed">
+                                        ระบบตรวจพบว่า <span className="text-white font-bold">{targetUsername}</span> ไม่ได้อยู่ในเซิร์ฟเวอร์ในขณะนี้
+                                    </p>
+                                    <p className="text-gray-400 text-sm mt-2">
+                                        ของที่ซื้อ <span className="text-[var(--primary)] font-semibold">{pendingProduct.name}</span> อาจจะไม่เข้าสู่ตัวละครทันที หากต้องการให้ได้ของทันที กรุณาเข้าเกมก่อนแล้วซื้อใหม่
+                                    </p>
+                                </div>
+
+                                <div className="flex gap-3">
+                                    {/* Cancel (Primary color — main action) */}
+                                    <button
+                                        onClick={() => { setShowOfflineWarning(false); setPendingProduct(null); }}
+                                        className="flex-1 px-4 py-3 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all text-sm"
+                                    >
+                                        ยกเลิกการซื้อ
+                                    </button>
+                                    {/* Continue (Gray — secondary) */}
+                                    <button
+                                        onClick={() => {
+                                            setShowOfflineWarning(false);
+                                            processPurchase(pendingProduct!, targetUsername);
+                                        }}
+                                        className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/15 text-white/70 font-medium rounded-xl transition-all text-sm"
+                                    >
+                                        ซื้อต่อ
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Gift Modal (enter target username) ──────────────────────── */}
+                {showOfflineModal && pendingProduct && pendingIsGift && (
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl w-full max-w-md shadow-2xl">
                             <div className="p-6">
                                 <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-                                    {pendingProduct.allowGift && !targetUsername ? (
-                                        <>
-                                            <svg className="w-6 h-6 text-[var(--primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
-                                            {t('shop.gift')}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <svg className="w-6 h-6 text-[var(--primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
-                                            {t('shop.confirmBuy')}
-                                        </>
-                                    )}
+                                    <svg className="w-6 h-6 text-[var(--primary)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
+                                    {t('shop.gift')}
                                 </h2>
-                                <p className="text-gray-400 mb-6">
+                                <p className="text-gray-400 mb-4">
                                     {t('shop.confirmBuyDesc')} <span className="text-white font-bold">{pendingProduct.name}</span>
                                 </p>
+                                <form onSubmit={async (e) => {
+                                    e.preventDefault();
+                                    if (!pendingProduct || !targetUsername) return;
 
-                                <form onSubmit={handleOfflinePurchaseSubmit}>
+                                    // Check if target is online before gifting
+                                    setCheckingOnline(true);
+                                    const { online, cannotVerify } = await checkOnlineStatus(targetUsername);
+                                    setCheckingOnline(false);
+
+                                    if (!online && !cannotVerify) {
+                                        setShowOfflineModal(false);
+                                        setShowOfflineWarning(true);
+                                    } else {
+                                        setShowOfflineModal(false);
+                                        processPurchase(pendingProduct, targetUsername);
+                                    }
+                                }}>
                                     <div className="mb-6">
                                         <label className="block text-sm font-medium text-gray-400 mb-1">
-                                            {pendingProduct.allowGift ? t('shop.targetUser') : t('shop.enterUsername')}
+                                            {t('shop.targetUser')}
                                         </label>
                                         <input
                                             type="text"
                                             value={targetUsername}
                                             onChange={(e) => setTargetUsername(e.target.value)}
-                                            className={`w-full bg-[#121212] border border-white/10 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none ${!pendingProduct.allowGift ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            className="w-full bg-[#121212] border border-white/10 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
                                             placeholder={t('shop.enterUsername')}
                                             required
-                                            readOnly={!pendingProduct.allowGift}
-                                            autoFocus={pendingProduct.allowGift}
+                                            autoFocus
                                         />
-                                        {!pendingProduct.allowGift && (
-                                            <p className="text-xs text-yellow-500 mt-1 flex items-center gap-1">
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                                {t('shop.playerOffline')}
-                                            </p>
-                                        )}
                                     </div>
-
                                     <div className="flex gap-3">
                                         <button
                                             type="button"
@@ -457,9 +526,10 @@ export default function ShopPage() {
                                         </button>
                                         <button
                                             type="submit"
-                                            className="flex-1 px-4 py-2 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-lg transition-colors"
+                                            disabled={checkingOnline}
+                                            className="flex-1 px-4 py-2 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-lg transition-colors disabled:opacity-50"
                                         >
-                                            {t('shop.confirmBuy')}
+                                            {checkingOnline ? 'กำลังตรวจสอบ...' : t('shop.confirmBuy')}
                                         </button>
                                     </div>
                                 </form>
