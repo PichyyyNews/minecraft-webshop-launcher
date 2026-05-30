@@ -6,16 +6,21 @@ type SkinAvatarProps = {
 };
 
 export default function SkinAvatar({ username }: SkinAvatarProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<SkinViewer | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const w = Math.min(container.clientWidth, 220);
+    const h = Math.min(container.clientHeight, 300);
 
     const viewer = new SkinViewer({
       canvas: canvasRef.current,
-      width: 190,
-      height: 250,
+      width: w,
+      height: h,
     });
 
     viewer.controls.enableRotate = true;
@@ -24,7 +29,20 @@ export default function SkinAvatar({ username }: SkinAvatarProps) {
     viewer.animation = new IdleAnimation();
     viewerRef.current = viewer;
 
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const newW = Math.min(entry.contentRect.width, 220);
+        const newH = Math.min(entry.contentRect.height, 300);
+        if (newW > 0 && newH > 0) {
+          viewer.width = newW;
+          viewer.height = newH;
+        }
+      }
+    });
+    resizeObserver.observe(container);
+
     return () => {
+      resizeObserver.disconnect();
       viewer.dispose();
       viewerRef.current = null;
     };
@@ -44,7 +62,7 @@ export default function SkinAvatar({ username }: SkinAvatarProps) {
   }, [username]);
 
   return (
-    <div className="skin-avatar" aria-label="Minecraft player preview">
+    <div className="skin-avatar" ref={containerRef} aria-label="Minecraft player preview">
       <canvas ref={canvasRef} />
     </div>
   );
