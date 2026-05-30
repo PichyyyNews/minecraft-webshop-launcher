@@ -126,12 +126,14 @@ input {
 .nav-brand {
   gap: 12px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .nav-logo {
   display: grid;
   width: 48px;
   height: 48px;
+  flex-shrink: 0;
   place-items: center;
   border: 0;
   border-radius: 0;
@@ -155,6 +157,9 @@ input {
 .nav-brand strong {
   color: #f6fff8;
   font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-brand span {
@@ -172,9 +177,11 @@ label span {
   text-transform: uppercase;
 }
 
+/* ─── Main Layout ─────────────────────────────────────────────────────────── */
+
 .main-layout {
   display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(300px, 3fr);
+  grid-template-columns: minmax(0, 7fr) minmax(240px, 3fr);
   gap: 16px;
   min-height: 0;
   overflow: hidden;
@@ -184,6 +191,7 @@ label span {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .nav-icon-button {
@@ -196,6 +204,7 @@ label span {
   color: #132016;
   background: var(--launcher-primary);
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .nav-icon-button.error {
@@ -208,6 +217,8 @@ label span {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* ─── Carousel ────────────────────────────────────────────────────────────── */
+
 .carousel-panel {
   position: relative;
   min-width: 0;
@@ -219,7 +230,7 @@ label span {
   display: grid;
   width: 100%;
   height: 100%;
-  min-height: 260px;
+  min-height: 200px;
   place-items: center;
   color: #53615a;
   background:
@@ -253,7 +264,7 @@ label span {
 .carousel-content h2,
 .auth-panel h2 {
   margin: 10px 0 12px;
-  font-size: clamp(1.7rem, 3vw, 3rem);
+  font-size: clamp(1.3rem, 2.5vw, 3rem);
   line-height: 1.08;
 }
 
@@ -284,6 +295,8 @@ label span {
   background: var(--launcher-primary);
 }
 
+/* ─── Auth Panel ──────────────────────────────────────────────────────────── */
+
 .auth-panel {
   position: relative;
   display: flex;
@@ -291,7 +304,8 @@ label span {
   padding: 28px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .nav-icon-button:hover,
@@ -332,7 +346,7 @@ label span {
 
 .skin-avatar {
   display: grid;
-  height: clamp(210px, 33vh, 260px);
+  height: clamp(140px, 28vh, 260px);
   place-items: center;
   margin: 0 auto;
   border: 0;
@@ -342,6 +356,8 @@ label span {
 
 .skin-avatar canvas {
   display: block;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .login-form h2,
@@ -411,6 +427,8 @@ input[type="password"]::-ms-clear {
   background: rgba(255, 91, 91, 0.12);
 }
 
+/* ─── Settings Layout ─────────────────────────────────────────────────────── */
+
 .settings-layout {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
@@ -429,6 +447,7 @@ input[type="password"]::-ms-clear {
   padding: 18px;
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.035);
+  overflow-y: auto;
 }
 
 .settings-back,
@@ -529,13 +548,13 @@ input[type="password"]::-ms-clear {
 
 .ram-control {
   display: grid;
-  grid-template-columns: 180px 58px;
+  grid-template-columns: minmax(100px, 180px) 58px;
   align-items: center;
   gap: 12px;
 }
 
 .ram-control input[type="range"] {
-  width: 180px;
+  width: 100%;
   min-height: 0;
   accent-color: var(--launcher-primary);
 }
@@ -597,30 +616,14 @@ input[type="password"]::-ms-clear {
   }
 }
 
-@media (max-width: 1080px) {
-  .launcher-shell {
-    grid-template-rows: auto auto auto;
-  }
-
-  .main-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-sidebar {
-    border-right: 0;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
-}
+/* ─── Download Bar ────────────────────────────────────────────────────────── */
 
 .download-bar {
   display: grid;
-  grid-template-columns: 180px 1fr 56px;
+  grid-template-columns: minmax(100px, 180px) 1fr 56px;
   gap: 16px;
   padding: 0 16px;
+  align-items: center;
 }
 
 .download-bar strong,
@@ -635,6 +638,9 @@ input[type="password"]::-ms-clear {
 .download-bar span {
   color: #aebcaf;
   font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .progress-track {
@@ -649,10 +655,436 @@ input[type="password"]::-ms-clear {
   height: 100%;
   border-radius: inherit;
   background: var(--launcher-primary);
+  transition: width 300ms ease;
 }
 
 .progress-value {
   justify-self: end;
   color: #f6fff8;
   font-weight: 800;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE BREAKPOINTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Breakpoint: ≤ 860px  — Stack main layout vertically ─────────────── */
+@media (max-width: 860px) {
+  .launcher-shell {
+    grid-template-rows: 26px auto 1fr auto;
+    gap: 8px;
+    padding: 6px 10px 8px;
+  }
+
+  .main-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 1.2fr) minmax(220px, 1fr);
+    gap: 10px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .carousel-image {
+    min-height: 160px;
+  }
+
+  .carousel-content {
+    padding: 40px 24px 20px;
+    min-height: 38%;
+  }
+
+  .carousel-content h2,
+  .auth-panel h2 {
+    font-size: clamp(1.2rem, 3vw, 1.8rem);
+    margin: 6px 0 8px;
+  }
+
+  .auth-panel {
+    padding: 20px;
+  }
+
+  .play-state {
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+
+  .skin-avatar {
+    height: clamp(100px, 22vh, 180px);
+  }
+
+  .play-state .primary-button,
+  .play-state .text-button {
+    min-height: 44px;
+  }
+
+  /* Settings layout stacks vertically */
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  .settings-back {
+    min-height: 36px;
+  }
+
+  .settings-nav-list {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .settings-nav-item {
+    min-height: 36px;
+    padding: 0 10px;
+    white-space: nowrap;
+    font-size: 0.88rem;
+  }
+
+  .settings-panel {
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .settings-header h2 {
+    font-size: 1.4rem;
+  }
+
+  /* Download bar fluid */
+  .download-bar {
+    grid-template-columns: minmax(80px, 140px) 1fr 44px;
+    gap: 10px;
+    padding: 0 12px;
+  }
+
+  .download-bar span {
+    font-size: 0.75rem;
+  }
+
+  .progress-track {
+    height: 10px;
+  }
+}
+
+/* ─── Breakpoint: ≤ 640px  — Compact everything further ──────────────── */
+@media (max-width: 640px) {
+  .launcher-shell {
+    grid-template-rows: 22px auto 1fr auto;
+    gap: 6px;
+    padding: 4px 8px 6px;
+  }
+
+  .launcher-nav {
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .nav-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .nav-brand strong {
+    font-size: 0.88rem;
+  }
+
+  .nav-brand span {
+    font-size: 0.75rem;
+  }
+
+  .nav-icon-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .main-layout {
+    grid-template-rows: minmax(140px, 1fr) minmax(200px, 1fr);
+    gap: 8px;
+  }
+
+  .carousel-content {
+    padding: 28px 16px 16px;
+    min-height: 40%;
+  }
+
+  .carousel-content p {
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .dots {
+    margin-top: 14px;
+    gap: 6px;
+  }
+
+  .dot {
+    width: 22px;
+    height: 6px;
+  }
+
+  .auth-panel {
+    padding: 16px;
+  }
+
+  .login-form {
+    gap: 12px;
+  }
+
+  .lock-icon,
+  .user-avatar {
+    width: 48px;
+    height: 48px;
+  }
+
+  input {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 0.9rem;
+  }
+
+  .primary-button,
+  .text-button {
+    min-height: 42px;
+    font-size: 0.9rem;
+  }
+
+  .play-state .primary-button,
+  .play-state .text-button {
+    min-height: 40px;
+  }
+
+  .skin-avatar {
+    height: clamp(80px, 18vh, 150px);
+  }
+
+  .setting-row,
+  .toggle-row,
+  .setting-action {
+    min-height: 60px;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .download-bar {
+    grid-template-columns: minmax(70px, 110px) 1fr 40px;
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .progress-track {
+    height: 8px;
+  }
+
+  .download-bar strong {
+    font-size: 0.82rem;
+  }
+
+  .download-bar span {
+    font-size: 0.72rem;
+  }
+
+  .progress-value {
+    font-size: 0.82rem;
+  }
+}
+
+/* ─── Breakpoint: ≤ 480px  — Absolute minimum width ──────────────────── */
+@media (max-width: 480px) {
+  .launcher-shell {
+    grid-template-rows: 20px auto 1fr auto;
+    gap: 4px;
+    padding: 3px 6px 4px;
+  }
+
+  .titlebar-game-meta {
+    gap: 6px;
+    font-size: 0.7rem;
+  }
+
+  .titlebar-game-meta strong {
+    font-size: 0.72rem;
+  }
+
+  .launcher-nav {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .nav-logo {
+    width: 30px;
+    height: 30px;
+  }
+
+  .nav-brand {
+    gap: 8px;
+  }
+
+  .nav-brand strong {
+    font-size: 0.8rem;
+  }
+
+  .nav-brand span {
+    font-size: 0.7rem;
+  }
+
+  .nav-icon-button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .main-layout {
+    grid-template-rows: minmax(120px, 1fr) minmax(180px, 1fr);
+    gap: 6px;
+  }
+
+  .carousel-content {
+    padding: 20px 12px 12px;
+  }
+
+  .carousel-content h2,
+  .auth-panel h2 {
+    font-size: 1.1rem;
+    margin: 4px 0 6px;
+  }
+
+  .carousel-content p {
+    font-size: 0.78rem;
+  }
+
+  .carousel-kicker {
+    font-size: 0.72rem;
+  }
+
+  .auth-panel {
+    padding: 12px;
+  }
+
+  .login-form p {
+    font-size: 0.82rem;
+  }
+
+  .skin-avatar {
+    height: clamp(60px, 15vh, 120px);
+  }
+
+  .play-state h2 {
+    font-size: 1.1rem;
+  }
+
+  .eyebrow {
+    font-size: 0.7rem;
+  }
+
+  .download-bar {
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 6px 8px;
+    min-height: 52px;
+  }
+
+  .download-bar > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .progress-track {
+    height: 6px;
+  }
+
+  .progress-value {
+    font-size: 0.75rem;
+    justify-self: end;
+    align-self: center;
+  }
+
+  .settings-panel {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .settings-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .settings-sidebar {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .settings-nav-item {
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 0.82rem;
+  }
+
+  .ram-control {
+    grid-template-columns: 1fr 48px;
+    gap: 8px;
+  }
+}
+
+/* ─── Breakpoint: height ≤ 500px — Super short window ────────────────── */
+@media (max-height: 500px) {
+  .launcher-shell {
+    grid-template-rows: 20px auto 1fr auto;
+    gap: 4px;
+  }
+
+  .launcher-nav {
+    min-height: 48px;
+  }
+
+  .carousel-content {
+    padding: 20px 16px 12px;
+    min-height: 30%;
+  }
+
+  .carousel-content h2,
+  .auth-panel h2 {
+    font-size: 1.1rem;
+    margin: 4px 0 4px;
+  }
+
+  .carousel-content p {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .dots {
+    margin-top: 8px;
+  }
+
+  .auth-panel {
+    padding: 12px;
+  }
+
+  .skin-avatar {
+    height: clamp(60px, 20vh, 120px);
+  }
+
+  .play-state {
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .play-state .primary-button,
+  .play-state .text-button {
+    min-height: 36px;
+  }
+
+  .download-bar {
+    min-height: 44px;
+  }
+
+  .progress-track {
+    height: 8px;
+  }
 }
