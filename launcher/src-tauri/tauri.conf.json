@@ -15,8 +15,8 @@
         "title": "MC Launcher",
         "width": 1180,
         "height": 760,
-        "minWidth": 960,
-        "minHeight": 640,
+        "minWidth": 480,
+        "minHeight": 400,
         "decorations": false
       }
     ],
