@@ -40,7 +40,7 @@ export type LauncherMod = {
 };
 
 export const defaultLauncherConfig: LauncherConfig = {
-  appName: "MC Launcher",
+  appName: "Pixel-Kati",
   headline: "พร้อมเข้าเซิร์ฟเวอร์",
   primaryColor: "#8fde5d",
   logoUrl: "",

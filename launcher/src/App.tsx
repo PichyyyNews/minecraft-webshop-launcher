@@ -342,8 +342,18 @@ function App() {
     const url = `${baseUrl}${path}`;
     try {
       await openUrl(url);
-    } catch {
-      window.open(url, "_blank");
+    } catch (e) {
+      console.error("Native open_url failed:", e);
+      const newWin = window.open(url, "_blank");
+      if (!newWin) {
+        const a = document.createElement("a");
+        a.href = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     }
   };
 

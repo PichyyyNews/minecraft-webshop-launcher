@@ -1798,8 +1798,8 @@ async fn prepare_and_launch(
 }
 
 #[tauri::command]
-fn open_url(url: String) {
-    let _ = open::that(url);
+fn open_url(url: String) -> Result<(), String> {
+    open::that(url).map_err(|e| e.to_string())
 }
 
 pub fn run() {

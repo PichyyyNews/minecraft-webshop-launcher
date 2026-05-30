@@ -1,5 +1,5 @@
 [package]
-name = "mc-launcher"
+name = "pixel-kati"
 version = "0.1.0"
 description = "Minecraft launcher desktop service for MC WebShop"
 authors = ["MC WebShop"]
