@@ -179,19 +179,54 @@ export function resolveAssetUrl(url?: string): string | undefined {
 export async function prepareAndLaunch(config: LauncherConfig, username: string, ramGb: number): Promise<LaunchResult> {
   // Call backend to generate auto-login token before launching
   try {
-    const token = localStorage.getItem("launcherToken");
+    let token = localStorage.getItem("launcherToken");
+    let needsRelogin = false;
+
     if (token) {
-      await fetch(`${getApiUrl()}/api/launcher/auto-login`, {
+      const response = await fetch(`${getApiUrl()}/api/launcher/auto-login`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      console.log("Auto-login token requested");
+      if (!response.ok) {
+        needsRelogin = true;
+      } else {
+        console.log("Auto-login token requested successfully");
+      }
+    } else {
+      needsRelogin = true;
+    }
+
+    if (needsRelogin) {
+      const savedUsername = localStorage.getItem("launcherSavedUsername");
+      const savedPassword = localStorage.getItem("launcherSavedPassword");
+      if (savedUsername && savedPassword) {
+        console.log("Token expired or missing, attempting re-login with saved credentials");
+        await loginLauncherUser(savedUsername, savedPassword);
+        token = localStorage.getItem("launcherToken");
+        if (token) {
+          const retryResponse = await fetch(`${getApiUrl()}/api/launcher/auto-login`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          if (retryResponse.ok) {
+            console.log("Auto-login token requested successfully after re-login");
+          } else {
+            throw new Error("Failed to authenticate session even after re-login. Please login again.");
+          }
+        }
+      } else if (token) {
+        throw new Error("Session expired. Please logout and login again.");
+      }
     }
   } catch (e) {
     console.error("Failed to request auto-login token", e);
+    throw new Error(e instanceof Error ? e.message : "Failed to authenticate session");
   }
 
   return invoke<LaunchResult>("prepare_and_launch", {

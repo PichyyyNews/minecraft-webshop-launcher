@@ -397,7 +397,7 @@ function App() {
           </button>
           <button
             className="nav-icon-button"
-            onClick={() => openExternalUrl("/topup")}
+            onClick={() => openExternalUrl("/shop/topup")}
             title="Topup"
           >
             <CreditCard size={19} />

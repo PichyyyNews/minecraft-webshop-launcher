@@ -76,9 +76,13 @@ export default function Navbar() {
 
     useEffect(() => {
         // Initial fetch
-        const userData = localStorage.getItem('user');
-        if (userData) {
-            setUser(JSON.parse(userData));
+        try {
+            const userData = localStorage.getItem('user');
+            if (userData) {
+                setUser(JSON.parse(userData));
+            }
+        } catch (e) {
+            console.error('Failed to parse user data', e);
         }
         fetchUserData();
 
@@ -92,13 +96,17 @@ export default function Navbar() {
 
         // Listen for storage changes (login/logout)
         const handleStorageChange = () => {
-            const userData = localStorage.getItem('user');
-            if (userData) {
-                setUser(JSON.parse(userData));
-                fetchUserData(); // Fetch fresh data on login
-            } else {
-                setUser(null);
-                setUuid(null);
+            try {
+                const userData = localStorage.getItem('user');
+                if (userData) {
+                    setUser(JSON.parse(userData));
+                    fetchUserData(); // Fetch fresh data on login
+                } else {
+                    setUser(null);
+                    setUuid(null);
+                }
+            } catch (e) {
+                console.error('Failed to parse user data on storage change', e);
             }
         };
 

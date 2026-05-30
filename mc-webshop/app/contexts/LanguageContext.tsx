@@ -1202,15 +1202,23 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         // Load language from localStorage
-        const saved = localStorage.getItem('language') as Language;
-        if (saved && (saved === 'th' || saved === 'en')) {
-            setLanguageState(saved);
+        try {
+            const saved = localStorage.getItem('language') as Language;
+            if (saved && (saved === 'th' || saved === 'en')) {
+                setLanguageState(saved);
+            }
+        } catch (e) {
+            console.warn('Failed to load language from localStorage', e);
         }
     }, []);
 
     const setLanguage = (lang: Language) => {
         setLanguageState(lang);
-        localStorage.setItem('language', lang);
+        try {
+            localStorage.setItem('language', lang);
+        } catch (e) {
+            console.warn('Failed to save language to localStorage', e);
+        }
     };
 
     const t = (key: string): string => {
