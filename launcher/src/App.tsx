@@ -23,6 +23,7 @@ import {
   CreditCard,
   UserPlus,
 } from "lucide-react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   defaultLauncherConfig,
@@ -335,10 +336,14 @@ function App() {
     { id: "game", label: "Game Files", icon: FolderOpen },
   ];
 
-  const openExternalUrl = (path: string) => {
+  const openExternalUrl = async (path: string) => {
     let baseUrl = getApiUrl();
     baseUrl = baseUrl.replace(/\/api$/, "").replace(/\/api-backend$/, "");
-    window.open(`${baseUrl}${path}`, "_blank");
+    try {
+      await openExternal(`${baseUrl}${path}`);
+    } catch {
+      window.open(`${baseUrl}${path}`, "_blank");
+    }
   };
 
   return (
