@@ -19,6 +19,9 @@ import {
   Square,
   Trash2,
   X,
+  ShoppingCart,
+  CreditCard,
+  UserPlus,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -31,6 +34,7 @@ import {
   reinstallGame,
   resolveAssetUrl,
   uninstallGame,
+  getApiUrl,
   type LauncherConfig,
   type LauncherContent,
   type LauncherStatus,
@@ -331,6 +335,12 @@ function App() {
     { id: "game", label: "Game Files", icon: FolderOpen },
   ];
 
+  const openExternalUrl = (path: string) => {
+    let baseUrl = getApiUrl();
+    baseUrl = baseUrl.replace(/\/api$/, "").replace(/\/api-backend$/, "");
+    window.open(`${baseUrl}${path}`, "_blank");
+  };
+
   return (
     <main className="launcher-shell" style={shellStyle}>
       <header className="titlebar" data-tauri-drag-region onMouseDown={handleTitlebarDrag}>
@@ -362,6 +372,20 @@ function App() {
           </div>
         </div>
         <div className="nav-actions">
+          <button
+            className="nav-icon-button"
+            onClick={() => openExternalUrl("/shop")}
+            title="Shop"
+          >
+            <ShoppingCart size={19} />
+          </button>
+          <button
+            className="nav-icon-button"
+            onClick={() => openExternalUrl("/topup")}
+            title="Topup"
+          >
+            <CreditCard size={19} />
+          </button>
           <button
             className={configState === "error" ? "nav-icon-button error" : "nav-icon-button"}
             onClick={loadLauncherData}
@@ -498,7 +522,12 @@ function App() {
       ) : (
       <section className="main-layout">
         <section className="carousel-panel" aria-label="Website content carousel">
-          <div className="carousel-image">
+          <div 
+            className="carousel-image" 
+            onClick={() => openExternalUrl("/")}
+            style={{ cursor: "pointer" }}
+            title="Go to website"
+          >
             {activeImageUrl ? <img src={activeImageUrl} alt="" /> : <ImageIcon size={64} />}
           </div>
           <div className="carousel-content">
@@ -568,6 +597,15 @@ function App() {
               <button className="primary-button" disabled={loginState === "loading"}>
                 {loginState === "loading" ? <Loader2 className="spin" size={20} /> : <LogIn size={20} />}
                 <span>{loginState === "loading" ? "Checking" : "Login"}</span>
+              </button>
+
+              <button 
+                type="button" 
+                className="text-button" 
+                onClick={() => openExternalUrl("/register")}
+              >
+                <UserPlus size={18} />
+                <span>Register</span>
               </button>
             </form>
           )}
