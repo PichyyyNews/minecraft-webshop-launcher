@@ -1797,6 +1797,11 @@ async fn prepare_and_launch(
     })
 }
 
+#[tauri::command]
+fn open_url(url: String) {
+    let _ = open::that(url);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -1811,7 +1816,8 @@ pub fn run() {
             open_game_folder,
             reinstall_game,
             uninstall_game,
-            prepare_and_launch
+            prepare_and_launch,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running MC Launcher");

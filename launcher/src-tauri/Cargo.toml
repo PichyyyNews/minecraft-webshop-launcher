@@ -20,6 +20,7 @@ reqwest = { version = "0.12", features = ["json"] }
 zip = "2"
 md-5 = "0.10"
 tauri-plugin-shell = "2.3.5"
+open = "5.3.5"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

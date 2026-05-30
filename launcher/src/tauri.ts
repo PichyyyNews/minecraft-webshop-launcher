@@ -213,3 +213,7 @@ export async function reinstallGame(config: LauncherConfig): Promise<Maintenance
 export async function uninstallGame(config: LauncherConfig): Promise<MaintenanceResult> {
   return invoke<MaintenanceResult>("uninstall_game", { config });
 }
+
+export async function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}
