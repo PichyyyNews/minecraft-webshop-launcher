@@ -145,7 +145,7 @@ export async function getLauncherConfig(): Promise<LauncherConfig> {
   });
 
   if (!response.ok) {
-    throw new Error("Failed to load launcher config");
+    throw new Error(`Failed to fetch config: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
@@ -164,7 +164,7 @@ export async function getLauncherContent(): Promise<LauncherContent> {
   });
 
   if (!response.ok) {
-    throw new Error("Failed to load launcher content");
+    throw new Error(`Failed to fetch content: ${response.status} ${response.statusText}`);
   }
 
   return response.json();
