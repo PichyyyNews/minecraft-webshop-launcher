@@ -301,6 +301,7 @@ const uploadLauncherFile = async (req, res) => {
         options: 'optionsFileUrl',
         resourcePack: 'resourcePackUrl',
         config: 'configFileUrl',
+        updater: 'launcherUpdateUrl',
     };
     const fieldName = fieldMap[req.params.type];
 
