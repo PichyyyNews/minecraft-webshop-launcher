@@ -96,7 +96,7 @@ const genericFileUpload = multer({
       destination: (req, file, cb) => cb(null, filesUploadDir),
       filename: (req, file, cb) => {
           const safeName = file.originalname.replace(/[\/\\<>:"|?*]/g, '').replace(/\.\./g, '');
-          cb(null, `${Date.now()}-${safeName}`);
+          cb(null, safeName);
       },
   }),
   limits: {
