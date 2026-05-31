@@ -33,7 +33,7 @@ const launcherFileUpload = multer({
         destination: (req, file, cb) => cb(null, launcherUploadDir),
         filename: (req, file, cb) => {
             const safeName = file.originalname.replace(/[\/\\<>:"|?*]/g, '').replace(/\.\./g, '');
-            cb(null, `${Date.now()}-${safeName}`);
+            cb(null, safeName);
         },
     }),
     limits: {
