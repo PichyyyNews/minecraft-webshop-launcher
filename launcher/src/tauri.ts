@@ -69,7 +69,7 @@ export const defaultLauncherConfig: LauncherConfig = {
   overwriteSettingsOnLaunch: true,
 };
 
-export const LAUNCHER_VERSION = "0.1.3";
+export const LAUNCHER_VERSION = "0.1.5";
 
 export const getBaseApiUrl = () => {
   if (typeof import.meta.env.VITE_LAUNCHER_API_URL === "string" && import.meta.env.VITE_LAUNCHER_API_URL !== "") {
