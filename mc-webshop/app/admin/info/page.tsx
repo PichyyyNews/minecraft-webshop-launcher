@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { API_URL } from '../../utils/config';
 import Modal from '../../components/Modal';
@@ -110,7 +110,7 @@ export default function InfoPage() {
     // Hero File Upload State
     const [heroFile, setHeroFile] = useState<File | null>(null);
     const [heroFileUploading, setHeroFileUploading] = useState(false);
-    const heroFileInputRef = React.useRef<HTMLInputElement>(null);
+    const heroFileInputRef = useRef<HTMLInputElement>(null);
 
     const [modalProps, setModalProps] = useState({
         isOpen: false,
