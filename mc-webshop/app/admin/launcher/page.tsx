@@ -25,6 +25,7 @@ type LauncherConfig = {
     latestLauncherVersion: string;
     launcherUpdateUrl: string;
     launcherUpdateNotes: string;
+    overwriteSettingsOnLaunch?: boolean;
 };
 
 type LauncherMod = {
