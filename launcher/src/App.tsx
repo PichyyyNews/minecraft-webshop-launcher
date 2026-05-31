@@ -91,6 +91,7 @@ function App() {
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateState, setUpdateState] = useState<"idle" | "downloading" | "error">("idle");
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const isVersionNewer = (latest: string, current: string) => {
     const l = latest.split('.').map(Number);
@@ -114,6 +115,7 @@ function App() {
       setConfig(nextConfig);
       setContent(nextContent);
       setConfigState("ready");
+      setIsInitialLoad(false);
       if (status.version !== "loading" && isVersionNewer(nextConfig.latestLauncherVersion, status.version)) {
         setUpdateAvailable(true);
       }
@@ -121,6 +123,7 @@ function App() {
       setConfig(defaultLauncherConfig);
       setContent(defaultContent);
       setConfigState("error");
+      setIsInitialLoad(false);
     }
   }, []);
 
@@ -361,6 +364,31 @@ function App() {
     }
   };
 
+  if (isInitialLoad && !updateAvailable) {
+    return (
+      <div
+        className="min-h-screen text-white font-sans overflow-hidden bg-cover bg-center flex flex-col justify-center items-center relative"
+        style={{ ...shellStyle, backgroundImage: `url('${resolveAssetUrl(config.backgroundUrl) || "default-bg.jpg"}')` }}
+      >
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-0"></div>
+        <div className="relative z-10 max-w-lg w-full bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 p-8 shadow-2xl mx-4">
+          <div className="flex flex-col items-center text-center">
+            <div className="w-20 h-20 bg-[var(--launcher-primary)] rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(var(--launcher-primary-rgb),0.3)]">
+              <Loader2 className="w-10 h-10 text-black animate-spin" />
+            </div>
+            <h1 className="text-3xl font-bold mb-2">Checking for Updates...</h1>
+            <p className="text-gray-300 mb-6 text-sm">
+              กำลังตรวจสอบข้อมูลเวอร์ชันจากเซิร์ฟเวอร์
+            </p>
+            <div className="text-gray-400 text-xs mt-4">
+              Launcher Version: {status.version !== "loading" ? status.version : "..."}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (updateAvailable) {
     return (
       <div
@@ -407,6 +435,9 @@ function App() {
             {updateState === "error" && (
               <p className="text-red-400 mt-4 text-sm">การอัปเดตล้มเหลว กรุณาลองใหม่อีกครั้ง</p>
             )}
+            <div className="text-gray-400 text-xs mt-6">
+              Current Version: {status.version}
+            </div>
           </div>
         </div>
       </div>

@@ -427,26 +427,22 @@ fn find_java_path() -> Option<String> {
 
 async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let jre_dir = app_data.join("game").join("runtime-java21");
-    let java_exe = jre_dir
-        .join("jdk-21.0.2+13-jre")
-        .join("bin")
-        .join("java.exe");
-
-    if java_exe.exists() {
-        return Ok(java_exe.to_string_lossy().to_string());
+    let jre_dir = app_data.join("game").join("runtime-java17");
+    
+    if let Some(path) = find_file_in_dir(&jre_dir, "java.exe") {
+        return Ok(path.to_string_lossy().to_string());
     }
 
-    emit_progress(app, "java-download", "Downloading Java 21 (Required)...", 0);
+    emit_progress(app, "java-download", "Downloading Java 17 (Required)...", 0);
 
     let client = reqwest::Client::new();
-    let zip_url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.2%2B13/OpenJDK21U-jre_x64_windows_hotspot_21.0.2_13.zip";
-    let zip_path = app_data.join("game").join("java21.zip");
+    let zip_url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jre_x64_windows_hotspot_17.0.11_9.zip";
+    let zip_path = app_data.join("game").join("java17.zip");
 
     // Download zip file
     download_to_replace(&client, zip_url, &zip_path).await?;
 
-    emit_progress(app, "java-extract", "Extracting Java 21...", 50);
+    emit_progress(app, "java-extract", "Extracting Java 17...", 50);
 
     // Extract zip file
     let file = File::open(&zip_path).map_err(|e| e.to_string())?;
@@ -470,8 +466,8 @@ async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
     // Clean up zip
     let _ = fs::remove_file(zip_path);
 
-    if java_exe.exists() {
-        Ok(java_exe.to_string_lossy().to_string())
+    if let Some(path) = find_file_in_dir(&jre_dir, "java.exe") {
+        Ok(path.to_string_lossy().to_string())
     } else {
         Err("Failed to locate java.exe after extraction".to_string())
     }
@@ -482,7 +478,7 @@ async fn get_or_download_java_path(app: &AppHandle) -> Result<String, String> {
         return Ok(path);
     }
 
-    // Download Java 21 if no compatible version is found
+    // Download Java 17 if no compatible version is found
     download_and_extract_java(app).await
 }
 
@@ -614,6 +610,26 @@ async fn download_and_extract_zip(
     }
 
     Ok(())
+}
+
+fn find_file_in_dir(dir: &Path, target_filename: &str) -> Option<PathBuf> {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name() {
+                    if name.to_string_lossy().to_lowercase() == target_filename.to_lowercase() {
+                        return Some(path);
+                    }
+                }
+            } else if path.is_dir() {
+                if let Some(found) = find_file_in_dir(&path, target_filename) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn library_path_from_name(name: &str) -> Option<PathBuf> {
