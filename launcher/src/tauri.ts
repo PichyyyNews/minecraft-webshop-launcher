@@ -62,14 +62,14 @@ export const defaultLauncherConfig: LauncherConfig = {
   backgroundUrl: "",
   mods: [],
   resourcePacks: [],
-  minLauncherVersion: "0.1.1",
-  latestLauncherVersion: "0.1.1",
+  minLauncherVersion: "0.1.2",
+  latestLauncherVersion: "0.1.2",
   launcherUpdateUrl: "",
   launcherUpdateNotes: "",
   overwriteSettingsOnLaunch: true,
 };
 
-export const LAUNCHER_VERSION = "0.1.1";
+export const LAUNCHER_VERSION = "0.1.2";
 
 export const getBaseApiUrl = () => {
   if (typeof import.meta.env.VITE_LAUNCHER_API_URL === "string" && import.meta.env.VITE_LAUNCHER_API_URL !== "") {
