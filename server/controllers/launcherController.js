@@ -233,17 +233,10 @@ const getLauncherConfig = async (req, res) => {
     try {
         const config = await getOrCreateLauncherConfig();
         
-        // If the request doesn't come from the admin panel (source=admin), enforce version
-        if (req.query.source !== 'admin') {
-            const clientVersion = req.headers['x-launcher-version'] || '';
-            const minRequired = config.minLauncherVersion || '0.1.1';
-            
-            if (isVersionOld(clientVersion, minRequired)) {
-                return res.status(400).json({ 
-                    message: `Please update your Launcher to version ${minRequired} or newer from pixel-kati.com`
-                });
-            }
-        }
+        // We deliberately don't block getLauncherConfig with a 400 error here, 
+        // because the launcher needs the config to get 'launcherUpdateUrl' and 'latestLauncherVersion' 
+        // to show the native Auto-Update screen.
+        // If we block it here, the launcher falls back to default config and never auto-updates.
         
         res.json(config);
     } catch (error) {
