@@ -16,6 +16,7 @@ const {
 } = require('../controllers/autologinController');
 
 const { protect } = require('../middleware/authMiddleware');
+const { checkLauncherVersion } = require('../middleware/launcherVersionMiddleware');
 
 router.get('/config', getLauncherConfig);
 router.get('/content', getLauncherContent);
@@ -26,6 +27,6 @@ router.get('/modrinth/categories', getModrinthCategories);
 router.get('/modrinth/search', searchModrinthMods);
 
 // Auto-Login endpoints
-router.post('/auto-login', protect, generateJoinToken);
+router.post('/auto-login', checkLauncherVersion, protect, generateJoinToken);
 
 module.exports = router;
