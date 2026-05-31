@@ -107,6 +107,11 @@ export default function InfoPage() {
         order: 0
     });
 
+    // Hero File Upload State
+    const [heroFile, setHeroFile] = useState<File | null>(null);
+    const [heroFileUploading, setHeroFileUploading] = useState(false);
+    const heroFileInputRef = React.useRef<HTMLInputElement>(null);
+
     const [modalProps, setModalProps] = useState({
         isOpen: false,
         title: '',
@@ -412,6 +417,39 @@ export default function InfoPage() {
         }
     };
 
+    const handleHeroFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setHeroFile(file);
+            setHeroFileUploading(true);
+
+            const formData = new FormData();
+            formData.append('heroFile', file);
+
+            try {
+                const res = await fetch(`${API_URL}/api/settings/hero-file`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    setSettings(prev => ({ ...prev, heroButtonLink: `${API_URL}${data.url}` }));
+                    showModal(t('common.success'), 'File uploaded successfully! Do not forget to Save Changes.', 'success');
+                } else {
+                    showModal(t('common.error'), t('admin.settings.uploadFailed'), 'error');
+                }
+            } catch (error) {
+                console.error('Error uploading hero file:', error);
+                showModal(t('common.error'), t('admin.settings.uploadFailed'), 'error');
+            } finally {
+                setHeroFileUploading(false);
+                if (heroFileInputRef.current) {
+                    heroFileInputRef.current.value = '';
+                }
+            }
+        }
+    };
+
     const handleReset = () => {
         showModal(t('admin.settings.confirmReset'), t('admin.settings.confirmReset'), 'warning', 'confirm', () => {
             setSettings(DEFAULT_SETTINGS);
@@ -693,15 +731,38 @@ export default function InfoPage() {
                                     </div>
 
                                     {settings.heroButtonAction === 'link' && (
-                                        <div className="animate-in fade-in slide-in-from-top-2">
-                                            <input
-                                                type="text"
-                                                name="heroButtonLink"
-                                                value={settings.heroButtonLink || ''}
-                                                onChange={handleSettingsChange}
-                                                className="w-full px-4 py-3 bg-[#2a2a2a] border border-transparent rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:bg-[#2a2a2a] text-white placeholder-gray-500 transition-all outline-none"
-                                                placeholder="https://example.com/download"
-                                            />
+                                        <div className="animate-in fade-in slide-in-from-top-2 space-y-3">
+                                            <div className="flex gap-2 items-center">
+                                                <input
+                                                    type="text"
+                                                    name="heroButtonLink"
+                                                    value={settings.heroButtonLink || ''}
+                                                    onChange={handleSettingsChange}
+                                                    className="w-full px-4 py-3 bg-[#2a2a2a] border border-transparent rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:bg-[#2a2a2a] text-white placeholder-gray-500 transition-all outline-none"
+                                                    placeholder="https://example.com/download"
+                                                />
+                                                <button
+                                                    onClick={() => heroFileInputRef.current?.click()}
+                                                    disabled={heroFileUploading}
+                                                    className="shrink-0 px-4 py-3 bg-[#333] hover:bg-[#444] text-white font-medium rounded-lg transition-colors border border-white/10 flex items-center gap-2"
+                                                >
+                                                    {heroFileUploading ? (
+                                                        <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                                    ) : (
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                                    )}
+                                                    Upload
+                                                </button>
+                                                <input
+                                                    type="file"
+                                                    ref={heroFileInputRef}
+                                                    className="hidden"
+                                                    onChange={handleHeroFileUpload}
+                                                />
+                                            </div>
+                                            <p className="text-xs text-gray-500">
+                                                You can paste a link manually, or click Upload to upload a file directly to the server.
+                                            </p>
                                         </div>
                                     )}
                                 </div>

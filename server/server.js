@@ -84,6 +84,26 @@ if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
+// Ensure generic files upload directory exists
+const filesUploadDir = path.join(__dirname, 'uploads', 'files');
+if (!fs.existsSync(filesUploadDir)) {
+  fs.mkdirSync(filesUploadDir, { recursive: true });
+}
+
+const multer = require('multer');
+const genericFileUpload = multer({
+  storage: multer.diskStorage({
+      destination: (req, file, cb) => cb(null, filesUploadDir),
+      filename: (req, file, cb) => {
+          const safeName = file.originalname.replace(/[\/\\<>:"|?*]/g, '').replace(/\.\./g, '');
+          cb(null, `${Date.now()}-${safeName}`);
+      },
+  }),
+  limits: {
+      fileSize: 500 * 1024 * 1024, // 500MB limit
+  }
+});
+
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/defaults', express.static(path.join(__dirname, '../public/defaults')));
@@ -239,6 +259,11 @@ app.post('/api/settings/social-image', uploadLimiter, upload.single('socialImage
 // Payment QR upload route
 app.post('/api/settings/payment-qr', uploadLimiter, upload.single('paymentQr'), processImage('settings'), async (req, res) => {
   await handleSettingUpload(req, res, 'paymentQrUrl', 'Payment QR uploaded successfully');
+});
+
+// Hero File upload route
+app.post('/api/settings/hero-file', uploadLimiter, genericFileUpload.single('heroFile'), async (req, res) => {
+  await handleSettingUpload(req, res, 'heroButtonLink', 'Hero file uploaded successfully');
 });
 
 // Error handling middleware
