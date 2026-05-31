@@ -149,14 +149,16 @@ function App() {
     if (savedUsername) setUsername(savedUsername);
     if (savedPassword) setPassword(savedPassword);
 
-    if (status.version !== "loading" && configState === "ready") {
+    return () => clearInterval(intervalId);
+  }, [loadLauncherData]);
+
+  useEffect(() => {
+    if (status.version !== "loading" && configState === "ready" && config.latestLauncherVersion) {
       if (isVersionNewer(config.latestLauncherVersion, status.version)) {
         setUpdateAvailable(true);
       }
     }
-
-    return () => clearInterval(intervalId);
-  }, [loadLauncherData, status.version, configState, config.latestLauncherVersion]);
+  }, [status.version, configState, config.latestLauncherVersion]);
 
   useEffect(() => {
     localStorage.setItem("launcherRamGb", String(ramGb));
