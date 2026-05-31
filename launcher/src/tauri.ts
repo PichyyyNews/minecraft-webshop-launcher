@@ -26,6 +26,7 @@ export type LauncherConfig = {
   latestLauncherVersion: string;
   launcherUpdateUrl: string;
   launcherUpdateNotes: string;
+  overwriteSettingsOnLaunch?: boolean;
 };
 
 export type LauncherMod = {
@@ -65,6 +66,7 @@ export const defaultLauncherConfig: LauncherConfig = {
   latestLauncherVersion: "0.1.1",
   launcherUpdateUrl: "",
   launcherUpdateNotes: "",
+  overwriteSettingsOnLaunch: true,
 };
 
 export const LAUNCHER_VERSION = "0.1.1";

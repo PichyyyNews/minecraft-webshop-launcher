@@ -164,6 +164,7 @@ const defaultConfig: LauncherConfig = {
     latestLauncherVersion: '0.1.1',
     launcherUpdateUrl: '',
     launcherUpdateNotes: '',
+    overwriteSettingsOnLaunch: true,
 };
 
 const resolveUrl = (url?: string) => {

@@ -140,6 +140,7 @@ const sanitizeConfigPayload = (payload) => {
         optionsFileUrl: payload.optionsFileUrl,
         configFileUrl: payload.configFileUrl,
         resourcePackUrl: payload.resourcePackUrl,
+        overwriteSettingsOnLaunch: payload.overwriteSettingsOnLaunch !== undefined ? payload.overwriteSettingsOnLaunch : true,
         mods: sanitizeMods(payload.mods, installType, minecraftVersion, loaderType),
         resourcePacks: sanitizeResourcePacks(payload.resourcePacks, minecraftVersion),
     };

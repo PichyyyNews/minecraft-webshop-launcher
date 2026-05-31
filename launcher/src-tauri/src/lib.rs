@@ -40,6 +40,12 @@ struct LaunchConfig {
     mods: Vec<LaunchMod>,
     #[serde(default)]
     resource_packs: Vec<LaunchMod>,
+    #[serde(default = "default_true")]
+    overwrite_settings_on_launch: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]
@@ -1562,25 +1568,31 @@ async fn prepare_and_launch(
     }
 
     if let Some(options_url) = resolve_remote_url(&api_base_url, &config.options_file_url) {
-        emit_progress(&app, "download", "Downloading options file", 78);
-        if let Err(e) =
-            download_to_replace(&client, &options_url, &game_dir.join("options.txt")).await
-        {
-            eprintln!(
-                "[Launcher] Warning: Failed to download options file ({}), skipping: {}",
-                options_url, e
-            );
+        let options_path = game_dir.join("options.txt");
+        if config.overwrite_settings_on_launch || !options_path.exists() {
+            emit_progress(&app, "download", "Downloading options file", 78);
+            if let Err(e) =
+                download_to_replace(&client, &options_url, &options_path).await
+            {
+                eprintln!(
+                    "[Launcher] Warning: Failed to download options file ({}), skipping: {}",
+                    options_url, e
+                );
+            }
         }
     }
 
     if let Some(config_url) = resolve_remote_url(&api_base_url, &config.config_file_url) {
-        emit_progress(&app, "download", "Downloading config folder", 81);
-        if let Err(e) = download_and_extract_zip(&client, &config_url, &game_dir.join("config")).await
-        {
-            eprintln!(
-                "[Launcher] Warning: Failed to download/extract config zip ({}), skipping: {}",
-                config_url, e
-            );
+        let config_path = game_dir.join("config");
+        if config.overwrite_settings_on_launch || !config_path.exists() {
+            emit_progress(&app, "download", "Downloading config folder", 81);
+            if let Err(e) = download_and_extract_zip(&client, &config_url, &config_path).await
+            {
+                eprintln!(
+                    "[Launcher] Warning: Failed to download/extract config zip ({}), skipping: {}",
+                    config_url, e
+                );
+            }
         }
     }
 
