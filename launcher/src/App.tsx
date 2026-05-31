@@ -78,6 +78,7 @@ function App() {
   const [password, setPassword] = useState("");
   const [user, setUser] = useState<LauncherUser | null>(null);
   const [loginState, setLoginState] = useState<"idle" | "loading" | "error">("idle");
+  const [loginErrorMessage, setLoginErrorMessage] = useState("");
   const [configState, setConfigState] = useState<"loading" | "ready" | "error">("loading");
   const [launchState, setLaunchState] = useState<"idle" | "loading" | "error" | "done">("idle");
   const [launchMessage, setLaunchMessage] = useState("Waiting for launch task");
@@ -250,6 +251,7 @@ function App() {
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoginState("loading");
+    setLoginErrorMessage("");
 
     try {
       const nextUser = await loginLauncherUser(username, password);
@@ -264,8 +266,9 @@ function App() {
       }
       setPassword("");
       setLoginState("idle");
-    } catch {
+    } catch (error: any) {
       setLoginState("error");
+      setLoginErrorMessage(error.message || "Username หรือ password ไม่ถูกต้อง");
     }
   };
 
@@ -753,7 +756,7 @@ function App() {
               </label>
 
               {loginState === "error" && (
-                <div className="login-error">Username หรือ password ไม่ถูกต้อง</div>
+                <div className="login-error">{loginErrorMessage || "Username หรือ password ไม่ถูกต้อง"}</div>
               )}
 
               <button className="primary-button" disabled={loginState === "loading"}>
