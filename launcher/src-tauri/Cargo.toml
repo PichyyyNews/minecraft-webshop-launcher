@@ -1,6 +1,6 @@
 [package]
 name = "pixel-kati"
-version = "0.1.0"
+version = "0.1.1"
 description = "Minecraft launcher desktop service for MC WebShop"
 authors = ["MC WebShop"]
 edition = "2021"
@@ -19,6 +19,7 @@ tauri = { version = "2.10.3", features = [] }
 reqwest = { version = "0.12", features = ["json"] }
 zip = "2"
 md-5 = "0.10"
+sha1 = "0.10"
 tauri-plugin-shell = "2.3.5"
 open = "5.3.5"
 

@@ -164,6 +164,22 @@ const LauncherConfigSchema = new mongoose.Schema({
         type: String,
         default: 'Launcher is under maintenance.',
     },
+    minLauncherVersion: {
+        type: String,
+        default: '0.1.1',
+    },
+    latestLauncherVersion: {
+        type: String,
+        default: '0.1.1',
+    },
+    launcherUpdateUrl: {
+        type: String,
+        default: '',
+    },
+    launcherUpdateNotes: {
+        type: String,
+        default: '',
+    },
 }, {
     timestamps: true,
 });

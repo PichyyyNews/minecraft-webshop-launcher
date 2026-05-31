@@ -2942,13 +2942,14 @@ dependencies = [
 
 [[package]]
 name = "pixel-kati"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "md-5",
  "open",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha1",
  "tauri",
  "tauri-build",
  "tauri-plugin-shell",

@@ -21,6 +21,10 @@ type LauncherConfig = {
     resourcePackUrl: string;
     mods: LauncherMod[];
     resourcePacks: LauncherMod[];
+    minLauncherVersion: string;
+    latestLauncherVersion: string;
+    launcherUpdateUrl: string;
+    launcherUpdateNotes: string;
 };
 
 type LauncherMod = {
@@ -156,6 +160,10 @@ const defaultConfig: LauncherConfig = {
     resourcePackUrl: '',
     mods: [],
     resourcePacks: [],
+    minLauncherVersion: '0.1.1',
+    latestLauncherVersion: '0.1.1',
+    launcherUpdateUrl: '',
+    launcherUpdateNotes: '',
 };
 
 const resolveUrl = (url?: string) => {
@@ -171,6 +179,7 @@ export default function AdminLauncherPage() {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [optionsFile, setOptionsFile] = useState<File | null>(null);
     const [configFile, setConfigFile] = useState<File | null>(null);
+    const [updaterFile, setUpdaterFile] = useState<File | null>(null);
     const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersionOption[]>([]);
     const [loaders, setLoaders] = useState<LoaderOption[]>([]);
     const [loaderVersions, setLoaderVersions] = useState<LoaderVersionOption[]>([]);
@@ -289,7 +298,7 @@ export default function AdminLauncherPage() {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/launcher/config`);
+            const res = await fetch(`${API_URL}/api/launcher/config?source=admin`);
             if (!res.ok) throw new Error('Failed to load config');
             const data = await res.json();
             setConfig(prev => ({ ...prev, ...data }));
@@ -579,9 +588,12 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
-    const uploadLauncherFile = async (token: string, type: 'options' | 'config', file: File | null) => {
+    const uploadLauncherFile = async (token: string, type: 'options' | 'config' | 'updater', file: File | null) => {
         if (!file) {
-            return type === 'options' ? config.optionsFileUrl : config.configFileUrl;
+            if (type === 'options') return config.optionsFileUrl;
+            if (type === 'config') return config.configFileUrl;
+            if (type === 'updater') return config.launcherUpdateUrl;
+            return '';
         }
 
         const formData = new FormData();
@@ -759,7 +771,8 @@ export default function AdminLauncherPage() {
             const logoUrl = await saveLogo(token);
             const optionsFileUrl = await uploadLauncherFile(token, 'options', optionsFile);
             const configFileUrl = await uploadLauncherFile(token, 'config', configFile);
-            const payload = { ...config, logoUrl, optionsFileUrl, configFileUrl, resourcePackUrl: '' };
+            const launcherUpdateUrl = await uploadLauncherFile(token, 'updater', updaterFile);
+            const payload = { ...config, logoUrl, optionsFileUrl, configFileUrl, launcherUpdateUrl };
 
             const res = await fetch(`${API_URL}/api/admin/launcher/config`, {
                 method: 'PUT',
@@ -784,6 +797,7 @@ export default function AdminLauncherPage() {
             setLogoFile(null);
             setOptionsFile(null);
             setConfigFile(null);
+            setUpdaterFile(null);
             setMessage('Launcher config saved');
             setTimeout(() => setMessage(''), 3000);
         } catch (error) {
@@ -893,6 +907,65 @@ export default function AdminLauncherPage() {
                                     onChange={(event) => setConfig(prev => ({ ...prev, primaryColor: event.target.value }))}
                                     className={inputClass}
                                 />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className={`${labelClass} flex items-center gap-2`}>
+                                <Download className="w-4 h-4" />
+                                Minimum Launcher Version
+                            </label>
+                            <input
+                                value={config.minLauncherVersion}
+                                onChange={(event) => setConfig(prev => ({ ...prev, minLauncherVersion: event.target.value }))}
+                                className={inputClass}
+                                placeholder="0.1.1"
+                            />
+                            <p className="text-xs text-gray-500 mt-2">
+                                Launcher ที่มีเวอร์ชันต่ำกว่านี้จะถูกบังคับให้อัปเดตและเข้าเกมไม่ได้
+                            </p>
+                        </div>
+
+                        <div className="border-t border-white/10 pt-6">
+                            <h2 className="text-xl font-bold mb-6 text-[var(--primary)] flex items-center gap-2">
+                                <Download className="w-5 h-5" />
+                                Auto Updater
+                            </h2>
+                            <div className="space-y-6">
+                                <div>
+                                    <label className={labelClass}>Latest Launcher Version</label>
+                                    <input
+                                        value={config.latestLauncherVersion}
+                                        onChange={(event) => setConfig(prev => ({ ...prev, latestLauncherVersion: event.target.value }))}
+                                        className={inputClass}
+                                        placeholder="0.1.1"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-2">เวอร์ชันล่าสุดที่แอดมินอัปโหลด หากผู้เล่นมีเวอร์ชันต่ำกว่านี้จะขึ้นปุ่มอัปเดตอัตโนมัติ</p>
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Update Notes</label>
+                                    <textarea
+                                        value={config.launcherUpdateNotes}
+                                        onChange={(event) => setConfig(prev => ({ ...prev, launcherUpdateNotes: event.target.value }))}
+                                        className={`${inputClass} min-h-[80px] resize-y`}
+                                        placeholder="รายละเอียดอัปเดต..."
+                                    />
+                                </div>
+                                <div>
+                                    <label className={labelClass}>Launcher File (.exe) URL or Upload</label>
+                                    <input
+                                        value={config.launcherUpdateUrl}
+                                        onChange={(event) => setConfig(prev => ({ ...prev, launcherUpdateUrl: event.target.value }))}
+                                        className={`${inputClass} mb-3`}
+                                        placeholder="https://example.com/pixel-kati-setup.exe"
+                                    />
+                                    <input
+                                        type="file"
+                                        accept=".exe"
+                                        onChange={(event) => setUpdaterFile(event.target.files?.[0] || null)}
+                                        className="block w-full text-sm text-gray-300 file:mr-4 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white hover:file:bg-white/20"
+                                    />
+                                </div>
                             </div>
                         </div>
 

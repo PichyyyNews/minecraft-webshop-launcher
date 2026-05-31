@@ -1,4 +1,5 @@
 use md5::{Digest, Md5};
+use sha1::Sha1;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -229,6 +230,46 @@ fn get_launcher_status() -> LauncherStatus {
         version: env!("CARGO_PKG_VERSION").to_string(),
         platform: std::env::consts::OS.to_string(),
     }
+}
+
+#[tauri::command]
+async fn install_update(url: String) -> Result<(), String> {
+    let temp_dir = std::env::temp_dir();
+    let new_exe_path = temp_dir.join("pixel-kati-update-latest.exe");
+
+    // Download the update
+    let response = reqwest::get(&url).await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    std::fs::write(&new_exe_path, bytes).map_err(|e| e.to_string())?;
+
+    // Create batch script
+    let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let bat_path = temp_dir.join("pixel-kati-update.bat");
+    
+    let bat_content = format!(
+        "@echo off\n\
+        :retry\n\
+        timeout /t 1 /nobreak >nul\n\
+        move /y \"{}\" \"{}\" >nul\n\
+        if errorlevel 1 goto retry\n\
+        start \"\" \"{}\"\n\
+        del \"%~0\"\n",
+        new_exe_path.display(),
+        current_exe.display(),
+        current_exe.display()
+    );
+
+    std::fs::write(&bat_path, bat_content).map_err(|e| e.to_string())?;
+
+    // Spawn batch script detached
+    Command::new("cmd")
+        .arg("/C")
+        .arg(&bat_path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    // Exit immediately to allow installer to run
+    std::process::exit(0);
 }
 
 fn check_java_version(cmd: &str) -> Option<u32> {
@@ -513,6 +554,20 @@ async fn download_to_replace(
     }
 
     download_to(client, url, destination).await
+}
+
+fn calculate_sha1(path: &Path) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha1::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 async fn download_and_extract_zip(
@@ -1541,7 +1596,26 @@ async fn prepare_and_launch(
         let file_name = safe_pack_file_name(&selected_pack.file_name);
         desired_packs.push(file_name.clone());
         if let Some(file_url) = resolve_remote_url(&api_base_url, &selected_pack.file_url) {
-            download_to(&client, &file_url, &resourcepacks_dir.join(&file_name)).await?;
+            let dest_path = resourcepacks_dir.join(&file_name);
+            let mut needs_download = true;
+            
+            if dest_path.exists() {
+                if !selected_pack.sha1.is_empty() {
+                    if let Ok(local_hash) = calculate_sha1(&dest_path) {
+                        if local_hash == selected_pack.sha1 {
+                            needs_download = false;
+                        } else {
+                            println!("[Launcher] Resource pack {} hash mismatch, redownloading...", file_name);
+                        }
+                    }
+                } else {
+                    needs_download = false;
+                }
+            }
+
+            if needs_download {
+                download_to_replace(&client, &file_url, &dest_path).await?;
+            }
         }
     }
 
@@ -1574,7 +1648,26 @@ async fn prepare_and_launch(
             let file_name = safe_file_name(&selected_mod.file_name);
             desired_files.push(file_name.clone());
             if let Some(file_url) = resolve_remote_url(&api_base_url, &selected_mod.file_url) {
-                download_to(&client, &file_url, &mods_dir.join(&file_name)).await?;
+                let dest_path = mods_dir.join(&file_name);
+                let mut needs_download = true;
+                
+                if dest_path.exists() {
+                    if !selected_mod.sha1.is_empty() {
+                        if let Ok(local_hash) = calculate_sha1(&dest_path) {
+                            if local_hash == selected_mod.sha1 {
+                                needs_download = false;
+                            } else {
+                                println!("[Launcher] Mod {} hash mismatch, redownloading...", file_name);
+                            }
+                        }
+                    } else {
+                        needs_download = false;
+                    }
+                }
+
+                if needs_download {
+                    download_to_replace(&client, &file_url, &dest_path).await?;
+                }
             }
         }
 
@@ -1817,7 +1910,8 @@ pub fn run() {
             reinstall_game,
             uninstall_game,
             prepare_and_launch,
-            open_url
+            open_url,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running MC Launcher");

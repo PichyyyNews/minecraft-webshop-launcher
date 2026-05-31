@@ -22,6 +22,7 @@ import {
   ShoppingCart,
   CreditCard,
   UserPlus,
+  Download,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -34,6 +35,7 @@ import {
   reinstallGame,
   resolveAssetUrl,
   uninstallGame,
+  installUpdate,
   getApiUrl,
   openUrl,
   type LauncherConfig,
@@ -87,6 +89,21 @@ function App() {
   const [keepLoggedIn, setKeepLoggedIn] = useState(() => localStorage.getItem("launcherKeepLoggedIn") !== "false");
   const [settingsMessage, setSettingsMessage] = useState("Settings are saved on this device");
 
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [updateState, setUpdateState] = useState<"idle" | "downloading" | "error">("idle");
+
+  const isVersionNewer = (latest: string, current: string) => {
+    const l = latest.split('.').map(Number);
+    const c = current.split('.').map(Number);
+    for (let i = 0; i < Math.max(l.length, c.length); i++) {
+      const vL = l[i] || 0;
+      const vC = c[i] || 0;
+      if (vL > vC) return true;
+      if (vL < vC) return false;
+    }
+    return false;
+  };
+
   const loadLauncherData = useCallback(async () => {
     setConfigState("loading");
     try {
@@ -97,6 +114,9 @@ function App() {
       setConfig(nextConfig);
       setContent(nextContent);
       setConfigState("ready");
+      if (status.version !== "loading" && isVersionNewer(nextConfig.latestLauncherVersion, status.version)) {
+        setUpdateAvailable(true);
+      }
     } catch {
       setConfig(defaultLauncherConfig);
       setContent(defaultContent);
@@ -126,8 +146,14 @@ function App() {
     if (savedUsername) setUsername(savedUsername);
     if (savedPassword) setPassword(savedPassword);
 
+    if (status.version !== "loading" && configState === "ready") {
+      if (isVersionNewer(config.latestLauncherVersion, status.version)) {
+        setUpdateAvailable(true);
+      }
+    }
+
     return () => clearInterval(intervalId);
-  }, [loadLauncherData]);
+  }, [loadLauncherData, status.version, configState, config.latestLauncherVersion]);
 
   useEffect(() => {
     localStorage.setItem("launcherRamGb", String(ramGb));
@@ -309,22 +335,83 @@ function App() {
   };
 
   const handleMaintenance = async (action: "open" | "reinstall" | "uninstall") => {
-    setSettingsMessage("Working...");
+    setLaunchState("loading");
+    setLaunchMessage(`Starting ${action}...`);
     try {
-      const result =
-        action === "open"
-          ? await openGameFolder(config)
-          : action === "reinstall"
-            ? await reinstallGame(config)
-            : await uninstallGame(config);
-      setLaunchState(action === "open" ? launchState : "idle");
-      setLaunchMessage(result.message);
-      setLaunchPercent(action === "open" ? launchPercent : 0);
-      setSettingsMessage(result.message);
-    } catch {
-      setSettingsMessage("Action failed");
+      if (action === "open") await openGameFolder(config);
+      if (action === "reinstall") await reinstallGame(config);
+      if (action === "uninstall") await uninstallGame(config);
+      setLaunchState("idle");
+    } catch (e: any) {
+      setLaunchMessage(`Error: ${e.message || String(e)}`);
+      setLaunchState("error");
     }
   };
+
+  const handleUpdate = async () => {
+    setUpdateState("downloading");
+    try {
+      await installUpdate(resolveAssetUrl(config.launcherUpdateUrl) || config.launcherUpdateUrl);
+      // Backend will exit the app, but just in case:
+      setUpdateState("idle");
+    } catch (e: any) {
+      setUpdateState("error");
+      setLaunchMessage(`Update failed: ${e.message || String(e)}`);
+      setLaunchState("error"); // Show error in the main screen's error modal
+    }
+  };
+
+  if (updateAvailable) {
+    return (
+      <div
+        className="min-h-screen text-white font-sans overflow-hidden bg-cover bg-center flex flex-col justify-center items-center relative"
+        style={{ ...shellStyle, backgroundImage: `url('${resolveAssetUrl(config.backgroundUrl) || "default-bg.jpg"}')` }}
+      >
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-0"></div>
+        <div className="relative z-10 max-w-lg w-full bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 p-8 shadow-2xl mx-4">
+          <div className="flex flex-col items-center text-center">
+            <div className="w-20 h-20 bg-[var(--launcher-primary)] rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(var(--launcher-primary-rgb),0.3)] animate-pulse">
+              <Download className="w-10 h-10 text-black" />
+            </div>
+            <h1 className="text-3xl font-bold mb-2">อัปเดตเวอร์ชันใหม่!</h1>
+            <p className="text-gray-300 mb-6 text-sm">
+              พบ Launcher เวอร์ชันใหม่ ({config.latestLauncherVersion}) จำเป็นต้องอัปเดตเพื่อเข้าเล่นเกม
+            </p>
+            
+            {config.launcherUpdateNotes && (
+              <div className="w-full bg-black/40 rounded-xl p-4 mb-8 text-left border border-white/5">
+                <h3 className="text-[var(--launcher-primary)] font-bold text-sm mb-2 uppercase tracking-wider">Patch Notes</h3>
+                <div className="text-gray-300 text-sm whitespace-pre-wrap max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                  {config.launcherUpdateNotes}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleUpdate}
+              disabled={updateState === "downloading"}
+              className="w-full h-14 bg-[var(--launcher-primary)] hover:bg-[var(--launcher-primary)]/90 text-black font-bold text-lg rounded-xl transition-all shadow-[0_0_20px_rgba(var(--launcher-primary-rgb),0.2)] hover:shadow-[0_0_30px_rgba(var(--launcher-primary-rgb),0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {updateState === "downloading" ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  กำลังดาวน์โหลด...
+                </>
+              ) : (
+                <>
+                  <Download className="w-6 h-6" />
+                  อัปเดตทันที
+                </>
+              )}
+            </button>
+            {updateState === "error" && (
+              <p className="text-red-400 mt-4 text-sm">การอัปเดตล้มเหลว กรุณาลองใหม่อีกครั้ง</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const settingsCategories: Array<{
     id: SettingsCategory;

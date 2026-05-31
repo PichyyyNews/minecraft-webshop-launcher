@@ -17,9 +17,15 @@ export type LauncherConfig = {
   loaderType: "Vanilla" | "Fabric" | "Forge" | "Quilt";
   modLoaderVersion: string;
   optionsFileUrl: string;
+  configFileUrl: string;
   resourcePackUrl: string;
+  backgroundUrl: string;
   mods: LauncherMod[];
   resourcePacks: LauncherMod[];
+  minLauncherVersion: string;
+  latestLauncherVersion: string;
+  launcherUpdateUrl: string;
+  launcherUpdateNotes: string;
 };
 
 export type LauncherMod = {
@@ -50,13 +56,21 @@ export const defaultLauncherConfig: LauncherConfig = {
   loaderType: "Vanilla",
   modLoaderVersion: "",
   optionsFileUrl: "",
+  configFileUrl: "",
   resourcePackUrl: "",
+  backgroundUrl: "",
   mods: [],
   resourcePacks: [],
+  minLauncherVersion: "0.1.1",
+  latestLauncherVersion: "0.1.1",
+  launcherUpdateUrl: "",
+  launcherUpdateNotes: "",
 };
 
-const getBaseApiUrl = () => {
-  if (import.meta.env.VITE_LAUNCHER_API_URL) {
+export const LAUNCHER_VERSION = "0.1.1";
+
+export const getBaseApiUrl = () => {
+  if (typeof import.meta.env.VITE_LAUNCHER_API_URL === "string" && import.meta.env.VITE_LAUNCHER_API_URL !== "") {
     return import.meta.env.VITE_LAUNCHER_API_URL;
   }
   if (typeof window !== "undefined" && window.location.protocol.startsWith("http")) {
@@ -124,7 +138,10 @@ export async function getLauncherStatus(): Promise<LauncherStatus> {
 
 export async function getLauncherConfig(): Promise<LauncherConfig> {
   const response = await fetch(`${apiUrl}/api/launcher/config?_t=${Date.now()}`, {
-    cache: "no-store"
+    cache: "no-store",
+    headers: {
+      "x-launcher-version": LAUNCHER_VERSION
+    }
   });
 
   if (!response.ok) {
@@ -140,7 +157,10 @@ export async function getLauncherConfig(): Promise<LauncherConfig> {
 
 export async function getLauncherContent(): Promise<LauncherContent> {
   const response = await fetch(`${apiUrl}/api/launcher/content?_t=${Date.now()}`, {
-    cache: "no-store"
+    cache: "no-store",
+    headers: {
+      "x-launcher-version": LAUNCHER_VERSION
+    }
   });
 
   if (!response.ok) {
@@ -155,6 +175,7 @@ export async function loginLauncherUser(username: string, password: string): Pro
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-launcher-version": LAUNCHER_VERSION
     },
     body: JSON.stringify({ username, password }),
   });
@@ -187,7 +208,8 @@ export async function prepareAndLaunch(config: LauncherConfig, username: string,
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-launcher-version': LAUNCHER_VERSION
         }
       });
       if (!response.ok) {
@@ -211,7 +233,8 @@ export async function prepareAndLaunch(config: LauncherConfig, username: string,
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'x-launcher-version': LAUNCHER_VERSION
             }
           });
           if (retryResponse.ok) {
@@ -247,6 +270,10 @@ export async function reinstallGame(config: LauncherConfig): Promise<Maintenance
 
 export async function uninstallGame(config: LauncherConfig): Promise<MaintenanceResult> {
   return invoke<MaintenanceResult>("uninstall_game", { config });
+}
+
+export async function installUpdate(url: string): Promise<void> {
+  return invoke<void>("install_update", { url });
 }
 
 export async function openUrl(url: string): Promise<void> {

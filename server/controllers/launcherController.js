@@ -4,6 +4,8 @@ const Card = require('../models/Card');
 const Wiki = require('../models/Wiki');
 const path = require('path');
 const axios = require('axios');
+const crypto = require('crypto');
+const fs = require('fs');
 
 const MODRINTH_API = 'https://api.modrinth.com/v2';
 const MODRINTH_HEADERS = {
@@ -209,9 +211,35 @@ const getModrinthCategories = async (req, res) => {
     }
 };
 
+const isVersionOld = (current, minRequired) => {
+    if (!current) return true;
+    const c = current.split('.').map(Number);
+    const m = (minRequired || '0.1.1').split('.').map(Number);
+    for (let i = 0; i < Math.max(c.length, m.length); i++) {
+        const cVal = c[i] || 0;
+        const mVal = m[i] || 0;
+        if (cVal < mVal) return true;
+        if (cVal > mVal) return false;
+    }
+    return false;
+};
+
 const getLauncherConfig = async (req, res) => {
     try {
         const config = await getOrCreateLauncherConfig();
+        
+        // If the request doesn't come from the admin panel (source=admin), enforce version
+        if (req.query.source !== 'admin') {
+            const clientVersion = req.headers['x-launcher-version'] || '';
+            const minRequired = config.minLauncherVersion || '0.1.1';
+            
+            if (isVersionOld(clientVersion, minRequired)) {
+                return res.status(400).json({ 
+                    message: `Please update your Launcher to version ${minRequired} or newer from pixel-kati.com`
+                });
+            }
+        }
+        
         res.json(config);
     } catch (error) {
         res.status(500).json({ message: 'Failed to load launcher config' });
@@ -323,6 +351,16 @@ const uploadLauncherPresetFile = async (req, res) => {
         const title = originalName.replace(/\.[^/.]+$/, '') || file.filename;
         const projectId = `custom-${type}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
 
+        let fileSha1 = '';
+        try {
+            if (file.path && fs.existsSync(file.path)) {
+                const fileBuffer = fs.readFileSync(file.path);
+                fileSha1 = crypto.createHash('sha1').update(fileBuffer).digest('hex');
+            }
+        } catch (e) {
+            console.error('Error calculating sha1 for', file.path, e);
+        }
+
         return {
             projectId,
             slug: projectId,
@@ -337,7 +375,7 @@ const uploadLauncherPresetFile = async (req, res) => {
             fileName: file.filename,
             fileUrl,
             fileSize: file.size || 0,
-            sha1: '',
+            sha1: fileSha1,
         };
     });
 
@@ -358,6 +396,26 @@ const getLauncherContent = async (req, res) => {
         settings.forEach(setting => {
             settingsMap[setting.key] = setting.value;
         });
+
+        const config = await getOrCreateLauncherConfig();
+        const clientVersion = req.headers['x-launcher-version'] || '';
+        const minRequired = config.minLauncherVersion || '0.1.1';
+        
+        if (req.query.source !== 'admin' && isVersionOld(clientVersion, minRequired)) {
+            // Return fake content for old launchers to force them to update
+            return res.json({
+                latestArticlesTitle: settingsMap.latestArticlesTitle || 'Latest Articles',
+                whyChooseUsTitle: settingsMap.whyChooseUsTitle || 'Why Choose Us?',
+                latestArticles: [],
+                cards: [{
+                    _id: 'update-required',
+                    title: '⚠️ อัปเดต Launcher ด่วน!',
+                    description: `Launcher ของคุณเป็นเวอร์ชันเก่า และไม่สามารถเข้าเกมได้แล้ว กรุณาดาวน์โหลดเวอร์ชันใหม่ (${minRequired}+) จากเว็บไซต์ pixel-kati.com`,
+                    imageUrl: '',
+                    color: '#ff3333'
+                }],
+            });
+        }
 
         res.json({
             latestArticlesTitle: settingsMap.latestArticlesTitle || 'Latest Articles',
