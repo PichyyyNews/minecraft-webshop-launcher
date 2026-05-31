@@ -208,7 +208,17 @@ const handleSettingUpload = async (req, res, key, message) => {
     return res.status(400).json({ message: 'No file uploaded.' });
   }
 
-  const relativePath = req.file.path.replace(/\\/g, '/');
+  let relativePath = req.file.path.replace(/\\/g, '/');
+  
+  // If the path is absolute (e.g. from generic multer), extract the 'uploads/...' part
+  const uploadsIndex = relativePath.indexOf('uploads/');
+  if (uploadsIndex !== -1) {
+    relativePath = relativePath.substring(uploadsIndex);
+  }
+  
+  // Ensure it doesn't start with a slash to avoid double slashes
+  relativePath = relativePath.replace(/^\/+/, '');
+
   const storedUrl = `/${relativePath}`;
 
   try {
