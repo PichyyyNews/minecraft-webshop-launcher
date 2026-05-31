@@ -481,6 +481,11 @@ function App() {
         <div className="titlebar-game-meta" aria-label="Game version">
           <span>{config.minecraftVersion}</span>
           <strong>{clientLabel}</strong>
+          {status.version !== "loading" && (
+            <span style={{ marginLeft: "6px", opacity: 0.6, fontSize: "0.9em" }}>
+              (v{status.version})
+            </span>
+          )}
         </div>
         <div className="window-controls">
           <button onClick={() => handleWindowAction("minimize")} title="Minimize">
