@@ -506,7 +506,7 @@ async fn download_and_extract_java(app: &AppHandle, required_version: u32) -> Re
         if check_java_is_compatible(&path_str, required_version) {
             Ok(path_str)
         } else {
-            Err("ไม่สามารถเปิดใช้งาน Java ได้ เครื่องของคุณอาจจะขาด Microsoft Visual C++ Redistributable (VCRUNTIME140.dll) กรุณาดาวน์โหลดและติดตั้งเพิ่มเติมจากเว็บของ Microsoft แล้วลองใหม่อีกครั้ง".to_string())
+            Err("ไม่สามารถเปิดใช้งาน Java ได้ เครื่องของคุณอาจจะขาด Microsoft Visual C++ Redistributable (VCRUNTIME140.dll) ระบบพยายามติดตั้งให้แล้วแต่ไม่สำเร็จ กรุณาดาวน์โหลดและติดตั้งเพิ่มเติมจากเว็บของ Microsoft ด้วยตัวเองแล้วลองใหม่อีกครั้ง".to_string())
         }
     } else {
         Err("Failed to locate java.exe after extraction".to_string())
@@ -1364,6 +1364,30 @@ async fn fetch_loader_profile(
     }))
 }
 
+async fn ensure_msvc_redist(app: &AppHandle) -> Result<(), String> {
+    if Path::new("C:\\Windows\\System32\\vcruntime140.dll").exists() {
+        return Ok(());
+    }
+
+    emit_progress(app, "msvc-download", "Downloading Visual C++ Redistributable...", 2);
+    let client = reqwest::Client::new();
+    let url = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+    let dest = std::env::temp_dir().join("vc_redist.x64.exe");
+    if download_to_replace(&client, url, &dest).await.is_err() {
+        return Ok(()); // Ignore error, let Java fail normally
+    }
+
+    emit_progress(app, "msvc-install", "Installing Visual C++ (Please click Yes/ตกลง on the popup if asked)...", 4);
+    
+    let _ = Command::new(&dest)
+        .arg("/install")
+        .arg("/quiet")
+        .arg("/norestart")
+        .status();
+        
+    Ok(())
+}
+
 #[tauri::command]
 async fn prepare_and_launch(
     app: AppHandle,
@@ -1388,6 +1412,8 @@ async fn prepare_and_launch(
     ));
 
     fs::create_dir_all(&game_dir).map_err(|error| error.to_string())?;
+
+    let _ = ensure_msvc_redist(&app).await;
 
     let java_path = get_or_download_java_path(&app, &config.minecraft_version).await?;
 
