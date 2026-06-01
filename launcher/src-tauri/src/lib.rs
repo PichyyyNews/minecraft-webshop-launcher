@@ -291,8 +291,15 @@ fn check_java_version(cmd: &str) -> Option<u32> {
     let version_str = if stderr_str.is_empty() {
         stdout_str.to_string()
     } else {
-        stderr_str.to_string()
+        format!("{} {}", stderr_str, stdout_str) // Combine both to ensure we catch '64-Bit' which might be in stderr or stdout
     };
+
+    // Strongly prefer 64-bit Java on 64-bit systems. 32-bit Java will crash on high RAM allocation.
+    let is_64_bit = version_str.to_lowercase().contains("64-bit");
+    if !is_64_bit && cfg!(target_pointer_width = "64") {
+        eprintln!("[Launcher] Warning: Found 32-bit Java on a 64-bit system. Rejecting to prevent OutOfMemory errors.");
+        return None;
+    }
 
     parse_java_version(&version_str)
 }
@@ -499,7 +506,7 @@ async fn download_and_extract_java(app: &AppHandle, required_version: u32) -> Re
         if check_java_is_compatible(&path_str, required_version) {
             Ok(path_str)
         } else {
-            Err("Extracted Java is not compatible or corrupted".to_string())
+            Err("ไม่สามารถเปิดใช้งาน Java ได้ เครื่องของคุณอาจจะขาด Microsoft Visual C++ Redistributable (VCRUNTIME140.dll) กรุณาดาวน์โหลดและติดตั้งเพิ่มเติมจากเว็บของ Microsoft แล้วลองใหม่อีกครั้ง".to_string())
         }
     } else {
         Err("Failed to locate java.exe after extraction".to_string())
