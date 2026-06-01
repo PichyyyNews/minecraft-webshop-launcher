@@ -87,7 +87,7 @@ function App() {
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>("performance");
   const [ramGb, setRamGb] = useState(() => Number(localStorage.getItem("launcherRamGb") || "2"));
   const [rememberPassword, setRememberPassword] = useState(() => localStorage.getItem("launcherRememberPassword") === "true");
-  const [keepLoggedIn, setKeepLoggedIn] = useState(() => localStorage.getItem("launcherKeepLoggedIn") !== "false");
+  const [keepLoggedIn, setKeepLoggedIn] = useState(() => localStorage.getItem("launcherKeepLoggedIn") === "true");
   const [settingsMessage, setSettingsMessage] = useState("Settings are saved on this device");
 
   const [updateAvailable, setUpdateAvailable] = useState(false);
