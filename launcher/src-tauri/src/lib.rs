@@ -344,17 +344,17 @@ fn parse_java_version(version_str: &str) -> Option<u32> {
     None
 }
 
-fn check_java_is_compatible(path: &str) -> bool {
-    check_java_version(path).map(|v| v >= 17).unwrap_or(false)
+fn check_java_is_compatible(path: &str, required_version: u32) -> bool {
+    check_java_version(path).map(|v| v >= required_version).unwrap_or(false)
 }
 
-fn find_java_path() -> Option<String> {
+fn find_java_path(required_version: u32) -> Option<String> {
     // 1. Look in environment variables (trust explicitly set JAVA_HOME)
     if let Ok(java_home) = std::env::var("JAVA_HOME") {
         let ext = if cfg!(windows) { "java.exe" } else { "java" };
         let path = Path::new(&java_home).join("bin").join(ext);
         let path_str = path.to_string_lossy().to_string();
-        if path.exists() && check_java_is_compatible(&path_str) {
+        if path.exists() && check_java_is_compatible(&path_str, required_version) {
             return Some(path_str);
         }
     }
@@ -370,7 +370,7 @@ fn find_java_path() -> Option<String> {
         ];
 
         for path in common_paths {
-            if Path::new(path).exists() && check_java_is_compatible(path) {
+            if Path::new(path).exists() && check_java_is_compatible(path, required_version) {
                 return Some(path.to_string());
             }
         }
@@ -396,7 +396,7 @@ fn find_java_path() -> Option<String> {
                     let java_exe = path.join("bin").join("java.exe");
                     if java_exe.exists() {
                         let path_str = java_exe.to_string_lossy().to_string();
-                        if check_java_is_compatible(&path_str) {
+                        if check_java_is_compatible(&path_str, required_version) {
                             return Some(path_str);
                         }
                     }
@@ -417,55 +417,77 @@ fn find_java_path() -> Option<String> {
         ];
 
         for path in mc_paths {
-            if !path.is_empty() && Path::new(&path).exists() && check_java_is_compatible(&path) {
+            if !path.is_empty() && Path::new(&path).exists() && check_java_is_compatible(&path, required_version) {
                 return Some(path);
             }
         }
     }
 
     // 5. Fallback to 'java' command in PATH if it is compatible
-    if check_java_is_compatible("java") {
+    if check_java_is_compatible("java", required_version) {
         return Some("java".to_string());
     }
 
     None
 }
 
-async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
+async fn download_and_extract_java(app: &AppHandle, required_version: u32) -> Result<String, String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let jre_dir = app_data.join("game").join("runtime-java17");
+    let jre_dir = app_data.join("game").join(format!("runtime-java{}", required_version));
     
     if let Some(path) = find_file_in_dir(&jre_dir, "java.exe") {
-        return Ok(path.to_string_lossy().to_string());
+        let path_str = path.to_string_lossy().to_string();
+        if check_java_is_compatible(&path_str, required_version) {
+            return Ok(path_str);
+        } else {
+            let _ = fs::remove_dir_all(&jre_dir);
+        }
     }
 
-    emit_progress(app, "java-download", "Downloading Java 17 (Required)...", 0);
+    emit_progress(app, "java-download", &format!("Downloading Java {} (Required)...", required_version), 0);
 
     let client = reqwest::Client::new();
-    let zip_url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jre_x64_windows_hotspot_17.0.11_9.zip";
-    let zip_path = app_data.join("game").join("java17.zip");
+    let zip_url = match required_version {
+        21 => "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.3%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.3_9.zip",
+        17 => "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.11%2B9/OpenJDK17U-jre_x64_windows_hotspot_17.0.11_9.zip",
+        _ => "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u412-b08/OpenJDK8U-jre_x64_windows_hotspot_8u412b08.zip",
+    };
+    let zip_path = app_data.join("game").join(format!("java{}.zip", required_version));
 
     // Download zip file
     download_to_replace(&client, zip_url, &zip_path).await?;
 
-    emit_progress(app, "java-extract", "Extracting Java 17...", 50);
+    emit_progress(app, "java-extract", &format!("Extracting Java {}...", required_version), 50);
 
     // Extract zip file
-    let file = File::open(&zip_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let file = match File::open(&zip_path) {
+        Ok(f) => f,
+        Err(e) => return Err(format!("Failed to open downloaded Java zip: {}", e)),
+    };
+    let mut archive = match zip::ZipArchive::new(file) {
+        Ok(a) => a,
+        Err(e) => {
+            let _ = fs::remove_file(&zip_path);
+            return Err(format!("Failed to read Java zip (corrupted?): {}", e));
+        }
+    };
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let mut file = match archive.by_index(i) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
         let outpath = jre_dir.join(file.name());
 
         if file.name().ends_with('/') {
-            fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+            let _ = fs::create_dir_all(&outpath);
         } else {
             if let Some(p) = outpath.parent() {
-                fs::create_dir_all(p).map_err(|e| e.to_string())?;
+                let _ = fs::create_dir_all(p);
             }
-            let mut outfile = File::create(&outpath).map_err(|e| e.to_string())?;
-            io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+            if let Ok(mut outfile) = File::create(&outpath) {
+                let _ = io::copy(&mut file, &mut outfile);
+            }
         }
     }
 
@@ -473,19 +495,32 @@ async fn download_and_extract_java(app: &AppHandle) -> Result<String, String> {
     let _ = fs::remove_file(zip_path);
 
     if let Some(path) = find_file_in_dir(&jre_dir, "java.exe") {
-        Ok(path.to_string_lossy().to_string())
+        let path_str = path.to_string_lossy().to_string();
+        if check_java_is_compatible(&path_str, required_version) {
+            Ok(path_str)
+        } else {
+            Err("Extracted Java is not compatible or corrupted".to_string())
+        }
     } else {
         Err("Failed to locate java.exe after extraction".to_string())
     }
 }
 
-async fn get_or_download_java_path(app: &AppHandle) -> Result<String, String> {
-    if let Some(path) = find_java_path() {
+async fn get_or_download_java_path(app: &AppHandle, mc_version: &str) -> Result<String, String> {
+    let required_version = if mc_version.starts_with("1.16") || mc_version.starts_with("1.17") || mc_version.starts_with("1.18") || mc_version.starts_with("1.19") || mc_version.starts_with("1.20.1") || mc_version.starts_with("1.20.2") || mc_version.starts_with("1.20.3") || mc_version.starts_with("1.20.4") {
+        17
+    } else if mc_version.starts_with("1.20") || mc_version.starts_with("1.21") || mc_version.starts_with("1.22") {
+        21
+    } else {
+        8
+    };
+
+    if let Some(path) = find_java_path(required_version) {
         return Ok(path);
     }
 
-    // Download Java 17 if no compatible version is found
-    download_and_extract_java(app).await
+    // Download Java if no compatible version is found
+    download_and_extract_java(app, required_version).await
 }
 
 fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
@@ -1347,7 +1382,7 @@ async fn prepare_and_launch(
 
     fs::create_dir_all(&game_dir).map_err(|error| error.to_string())?;
 
-    let java_path = get_or_download_java_path(&app).await?;
+    let java_path = get_or_download_java_path(&app, &config.minecraft_version).await?;
 
     emit_progress(&app, "metadata", "Loading Minecraft metadata", 5);
     let vanilla_metadata = fetch_vanilla_metadata(&client, &config.minecraft_version).await?;
