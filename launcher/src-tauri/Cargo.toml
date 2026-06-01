@@ -1,6 +1,6 @@
 [package]
 name = "pixel-kati"
-version = "0.1.8"
+version = "0.1.9"
 description = "Minecraft launcher desktop service for MC WebShop"
 authors = ["MC WebShop"]
 edition = "2021"
