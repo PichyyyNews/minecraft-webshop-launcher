@@ -128,9 +128,15 @@ const LauncherConfigSchema = new mongoose.Schema({
         type: [LauncherModSchema],
         default: [],
     },
-    overwriteSettingsOnLaunch: {
-        type: Boolean,
-        default: true,
+    optionsOverwriteMode: {
+        type: String,
+        enum: ['none', 'first-time', 'always'],
+        default: 'first-time',
+    },
+    configOverwriteMode: {
+        type: String,
+        enum: ['none', 'first-time', 'always'],
+        default: 'first-time',
     },
     minMemoryMb: {
         type: Number,

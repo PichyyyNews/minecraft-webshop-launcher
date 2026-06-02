@@ -25,7 +25,8 @@ type LauncherConfig = {
     latestLauncherVersion: string;
     launcherUpdateUrl: string;
     launcherUpdateNotes: string;
-    overwriteSettingsOnLaunch?: boolean;
+    optionsOverwriteMode?: 'none' | 'first-time' | 'always';
+    configOverwriteMode?: 'none' | 'first-time' | 'always';
 };
 
 type LauncherMod = {
@@ -165,7 +166,8 @@ const defaultConfig: LauncherConfig = {
     latestLauncherVersion: '0.1.1',
     launcherUpdateUrl: '',
     launcherUpdateNotes: '',
-    overwriteSettingsOnLaunch: true,
+    optionsOverwriteMode: 'first-time',
+    configOverwriteMode: 'first-time',
 };
 
 const resolveUrl = (url?: string) => {
@@ -1084,27 +1086,33 @@ export default function AdminLauncherPage() {
                                     {config.configFileUrl && <p className="mt-2 text-xs text-gray-500">{config.configFileUrl}</p>}
                                   </div>
 
-                                  <div className="md:col-span-2 pt-4 border-t border-white/5 mt-2">
-                                      <label className="flex items-center gap-3 cursor-pointer group">
-                                          <div className="relative">
-                                              <input
-                                                  type="checkbox"
-                                                  checked={config.overwriteSettingsOnLaunch}
-                                                  onChange={(e) => setConfig(prev => ({ ...prev, overwriteSettingsOnLaunch: e.target.checked }))}
-                                                  className="sr-only"
-                                              />
-                                              <div className={`block w-10 h-6 rounded-full transition-colors ${config.overwriteSettingsOnLaunch ? 'bg-[var(--primary)]' : 'bg-white/10 group-hover:bg-white/20'}`}></div>
-                                              <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${config.overwriteSettingsOnLaunch ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                                          </div>
-                                          <div>
-                                              <div className="text-sm font-medium text-white">เขียนทับ Config / Options ทุกครั้งที่เข้าเกม</div>
-                                              <div className="text-xs text-gray-400 mt-0.5">
-                                                  {config.overwriteSettingsOnLaunch 
-                                                      ? 'เปิด: เขียนทับทุกครั้ง (ผู้เล่นตั้งค่าเองไม่ได้)' 
-                                                      : 'ปิด: เขียนแค่ครั้งแรกครั้งเดียว (ผู้เล่นแก้ไขตั้งค่าได้เอง)'}
-                                              </div>
-                                          </div>
-                                      </label>
+                                  <div className="md:col-span-2 pt-4 border-t border-white/5 mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      <div>
+                                          <label className="block text-sm font-medium text-gray-300 mb-2">การเขียนทับ Options (options.txt)</label>
+                                          <select
+                                              value={config.optionsOverwriteMode || 'first-time'}
+                                              onChange={(e) => setConfig(prev => ({ ...prev, optionsOverwriteMode: e.target.value as 'none' | 'first-time' | 'always' }))}
+                                              className="block w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] text-sm transition-all"
+                                          >
+                                              <option value="none">ไม่เลย (ข้ามไปเลย)</option>
+                                              <option value="first-time">ครั้งแรกเท่านั้น (เฉพาะไม่มีไฟล์)</option>
+                                              <option value="always">ทับทุกครั้ง (อัปเดตเสมอ)</option>
+                                          </select>
+                                          <p className="mt-2 text-xs text-gray-400">กำหนดว่าไฟล์ options.txt จะถูกดึงมาเขียนทับเมื่อไหร่</p>
+                                      </div>
+                                      <div>
+                                          <label className="block text-sm font-medium text-gray-300 mb-2">การเขียนทับ Config (โฟลเดอร์ config)</label>
+                                          <select
+                                              value={config.configOverwriteMode || 'first-time'}
+                                              onChange={(e) => setConfig(prev => ({ ...prev, configOverwriteMode: e.target.value as 'none' | 'first-time' | 'always' }))}
+                                              className="block w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--primary)] focus:ring-1 focus:ring-[var(--primary)] text-sm transition-all"
+                                          >
+                                              <option value="none">ไม่เลย (ข้ามไปเลย)</option>
+                                              <option value="first-time">ครั้งแรกเท่านั้น (เฉพาะไม่มีไฟล์)</option>
+                                              <option value="always">ทับทุกครั้ง (อัปเดตเสมอ)</option>
+                                          </select>
+                                          <p className="mt-2 text-xs text-gray-400">กำหนดว่าไฟล์ config.zip จะถูกดึงมาแตกไฟล์เมื่อไหร่</p>
+                                      </div>
                                   </div>
 
                             </div>

@@ -26,7 +26,8 @@ export type LauncherConfig = {
   latestLauncherVersion: string;
   launcherUpdateUrl: string;
   launcherUpdateNotes: string;
-  overwriteSettingsOnLaunch?: boolean;
+  optionsOverwriteMode?: "none" | "first-time" | "always";
+  configOverwriteMode?: "none" | "first-time" | "always";
 };
 
 export type LauncherMod = {
@@ -66,10 +67,11 @@ export const defaultLauncherConfig: LauncherConfig = {
   latestLauncherVersion: "0.1.3",
   launcherUpdateUrl: "",
   launcherUpdateNotes: "",
-  overwriteSettingsOnLaunch: true,
+  optionsOverwriteMode: "first-time",
+  configOverwriteMode: "first-time",
 };
 
-export const LAUNCHER_VERSION = "0.1.9";
+export const LAUNCHER_VERSION = "0.1.10";
 
 export const getBaseApiUrl = () => {
   if (typeof import.meta.env.VITE_LAUNCHER_API_URL === "string" && import.meta.env.VITE_LAUNCHER_API_URL !== "") {

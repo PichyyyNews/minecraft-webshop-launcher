@@ -40,12 +40,14 @@ struct LaunchConfig {
     mods: Vec<LaunchMod>,
     #[serde(default)]
     resource_packs: Vec<LaunchMod>,
-    #[serde(default = "default_true")]
-    overwrite_settings_on_launch: bool,
+    #[serde(default = "default_overwrite_mode")]
+    options_overwrite_mode: String,
+    #[serde(default = "default_overwrite_mode")]
+    config_overwrite_mode: String,
 }
 
-fn default_true() -> bool {
-    true
+fn default_overwrite_mode() -> String {
+    "first-time".to_string()
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]
@@ -1637,7 +1639,14 @@ async fn prepare_and_launch(
 
     if let Some(options_url) = resolve_remote_url(&api_base_url, &config.options_file_url) {
         let options_path = game_dir.join("options.txt");
-        if config.overwrite_settings_on_launch || !options_path.exists() {
+        let should_download = match config.options_overwrite_mode.as_str() {
+            "always" => true,
+            "first-time" => !options_path.exists(),
+            "none" => false,
+            _ => !options_path.exists(),
+        };
+
+        if should_download {
             emit_progress(&app, "download", "Downloading options file", 78);
             if let Err(e) =
                 download_to_replace(&client, &options_url, &options_path).await
@@ -1652,7 +1661,14 @@ async fn prepare_and_launch(
 
     if let Some(config_url) = resolve_remote_url(&api_base_url, &config.config_file_url) {
         let config_path = game_dir.join("config");
-        if config.overwrite_settings_on_launch || !config_path.exists() {
+        let should_download = match config.config_overwrite_mode.as_str() {
+            "always" => true,
+            "first-time" => !config_path.exists(),
+            "none" => false,
+            _ => !config_path.exists(),
+        };
+
+        if should_download {
             emit_progress(&app, "download", "Downloading config folder", 81);
             if let Err(e) = download_and_extract_zip(&client, &config_url, &config_path).await
             {

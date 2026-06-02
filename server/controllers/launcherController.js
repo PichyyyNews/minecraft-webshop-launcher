@@ -144,7 +144,8 @@ const sanitizeConfigPayload = (payload) => {
         latestLauncherVersion: payload.latestLauncherVersion,
         launcherUpdateUrl: payload.launcherUpdateUrl,
         launcherUpdateNotes: payload.launcherUpdateNotes,
-        overwriteSettingsOnLaunch: payload.overwriteSettingsOnLaunch !== undefined ? payload.overwriteSettingsOnLaunch : true,
+        optionsOverwriteMode: payload.optionsOverwriteMode !== undefined ? payload.optionsOverwriteMode : 'first-time',
+        configOverwriteMode: payload.configOverwriteMode !== undefined ? payload.configOverwriteMode : 'first-time',
         mods: sanitizeMods(payload.mods, installType, minecraftVersion, loaderType),
         resourcePacks: sanitizeResourcePacks(payload.resourcePacks, minecraftVersion),
     };
