@@ -23,7 +23,15 @@ export async function generateMetadata(): Promise<Metadata> {
   try {
     const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
     const apiUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl;
-    const res = await fetch(`${apiUrl}/api/settings`, { cache: 'no-store' });
+    let fetchUrl = `${apiUrl}/api/settings`;
+
+    // Next.js fetch() requires absolute URLs on the server.
+    // If API_URL is relative (e.g. /api-backend in Docker), we route directly to the backend container.
+    if (typeof window === 'undefined' && fetchUrl.startsWith('/')) {
+      fetchUrl = (process.env.INTERNAL_API_URL || 'http://backend:5000') + '/api/settings';
+    }
+
+    const res = await fetch(fetchUrl, { cache: 'no-store' });
     
     if (!res.ok) {
       console.error(`[Metadata] Failed to fetch settings: ${res.status} ${res.statusText}`);
