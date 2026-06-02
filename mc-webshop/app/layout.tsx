@@ -21,7 +21,15 @@ const prompt = Prompt({
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const res = await fetch(`${API_URL}/api/settings`, { cache: 'no-store' });
+    const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
+    const apiUrl = baseUrl.endsWith('/api') ? baseUrl.slice(0, -4) : baseUrl;
+    const res = await fetch(`${apiUrl}/api/settings`, { cache: 'no-store' });
+    
+    if (!res.ok) {
+      console.error(`[Metadata] Failed to fetch settings: ${res.status} ${res.statusText}`);
+      throw new Error("API responded with an error");
+    }
+
     const data = await res.json();
 
     return {
@@ -31,11 +39,12 @@ export async function generateMetadata(): Promise<Metadata> {
         icon: data.faviconUrl
           ? (data.faviconUrl.startsWith('http')
             ? `${data.faviconUrl}?v=${Date.now()}`
-            : `${API_URL}${data.faviconUrl.startsWith('/') ? '' : '/'}${data.faviconUrl}?v=${Date.now()}`)
+            : `${apiUrl}${data.faviconUrl.startsWith('/') ? '' : '/'}${data.faviconUrl}?v=${Date.now()}`)
           : '/favicon.ico',
       },
     };
-  } catch {
+  } catch (error) {
+    console.error("[Metadata] Error fetching settings for title/favicon:", error);
     return {
       title: "MC Webshop",
       description: "Premium Minecraft Shopping Experience",
