@@ -47,8 +47,30 @@ export default function AdminAuthGuard({ children }: { children: React.ReactNode
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
         })
-            .then(res => res.json())
+            .then(res => {
+                if (res.status === 429) {
+                    return { success: true, isRateLimit: true };
+                }
+                return res.json();
+            })
             .then(data => {
+                if (data.isRateLimit) {
+                    // Use cached user data if rate limited to prevent unexpected logouts
+                    try {
+                        const cachedUser = JSON.parse(localStorage.getItem('adminUser') || '{}');
+                        const requiredPerm = PAGE_PERMISSIONS[pathname];
+                        if (requiredPerm && !cachedUser.isRoot && cachedUser.permissions && !cachedUser.permissions.includes(requiredPerm)) {
+                            const firstAllowed = Object.entries(PAGE_PERMISSIONS).find(
+                                ([, perm]) => cachedUser.permissions.includes(perm)
+                            );
+                            router.push(firstAllowed ? firstAllowed[0] : '/admin/login');
+                            return;
+                        }
+                    } catch (e) {}
+                    setIsAuthenticated(true);
+                    return;
+                }
+
                 if (data.success) {
                     // Refresh adminUser in localStorage (permissions may have changed)
                     localStorage.setItem('adminUser', JSON.stringify({
