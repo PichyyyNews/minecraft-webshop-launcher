@@ -94,6 +94,17 @@ let activeApiUrl = getBaseApiUrl().replace(/\/$/, "");
 
 export const getApiUrl = () => activeApiUrl;
 
+export const getWebsiteUrl = () => {
+  if (typeof import.meta.env.VITE_LAUNCHER_WEBSITE_URL === "string" && import.meta.env.VITE_LAUNCHER_WEBSITE_URL !== "") {
+    return import.meta.env.VITE_LAUNCHER_WEBSITE_URL;
+  }
+  const apiUrl = getApiUrl();
+  if (apiUrl.includes("localhost:5000") || apiUrl.includes("127.0.0.1:5000")) {
+    return "https://localhost";
+  }
+  return apiUrl.replace(/\/api-backend\/?$/, "").replace(/\/api\/?$/, "");
+};
+
 export async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const primaryUrl = `${getApiUrl()}${cleanPath}`;

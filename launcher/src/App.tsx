@@ -37,6 +37,7 @@ import {
   uninstallGame,
   installUpdate,
   getApiUrl,
+  getWebsiteUrl,
   openUrl,
   type LauncherConfig,
   type LauncherContent,
@@ -481,9 +482,9 @@ function App() {
   ];
 
   const openExternalUrl = async (path: string) => {
-    let baseUrl = getApiUrl();
-    baseUrl = baseUrl.replace(/\/api$/, "").replace(/\/api-backend$/, "");
-    const url = `${baseUrl}${path}`;
+    const baseUrl = getWebsiteUrl().replace(/\/$/, "");
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${baseUrl}${cleanPath}`;
     try {
       await openUrl(url);
     } catch (e) {
