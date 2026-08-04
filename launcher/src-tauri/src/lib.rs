@@ -616,6 +616,14 @@ fn calculate_sha1(path: &Path) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+fn is_dir_empty(path: &Path) -> bool {
+    if let Ok(mut entries) = fs::read_dir(path) {
+        entries.next().is_none()
+    } else {
+        true
+    }
+}
+
 async fn download_and_extract_zip(
     client: &reqwest::Client,
     url: &str,
@@ -639,14 +647,64 @@ async fn download_and_extract_zip(
         fs::create_dir_all(extract_dir).map_err(|error| error.to_string())?;
     }
 
+    let target_folder_name = extract_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let mut strip_prefix = true;
+    let mut non_empty_entries = 0;
+
+    for i in 0..archive.len() {
+        if let Ok(file) = archive.by_index(i) {
+            if let Some(enclosed) = file.enclosed_name() {
+                let path_str = enclosed.to_string_lossy();
+                if path_str.trim().is_empty() {
+                    continue;
+                }
+                non_empty_entries += 1;
+                let mut components = enclosed.components();
+                if let Some(std::path::Component::Normal(first)) = components.next() {
+                    let first_name = first.to_string_lossy().to_lowercase();
+                    if first_name != target_folder_name && first_name != "config" {
+                        strip_prefix = false;
+                        break;
+                    }
+                } else {
+                    strip_prefix = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    if non_empty_entries == 0 {
+        strip_prefix = false;
+    }
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|error| error.to_string())?;
-        let outpath = match file.enclosed_name() {
-            Some(path) => extract_dir.join(path),
+        let enclosed = match file.enclosed_name() {
+            Some(path) => path.to_path_buf(),
             None => continue,
         };
 
-        if file.name().ends_with('/') {
+        let target_relative_path = if strip_prefix {
+            let mut components = enclosed.components();
+            components.next();
+            components.as_path().to_path_buf()
+        } else {
+            enclosed
+        };
+
+        if target_relative_path.as_os_str().is_empty() {
+            continue;
+        }
+
+        let outpath = extract_dir.join(&target_relative_path);
+
+        if file.name().ends_with('/') || file.name().ends_with('\\') {
             fs::create_dir_all(&outpath).map_err(|error| error.to_string())?;
         } else {
             if let Some(p) = outpath.parent() {
@@ -1663,13 +1721,17 @@ async fn prepare_and_launch(
         let config_path = game_dir.join("config");
         let should_download = match config.config_overwrite_mode.as_str() {
             "always" => true,
-            "first-time" => !config_path.exists(),
+            "first-time" => !config_path.exists() || is_dir_empty(&config_path),
             "none" => false,
-            _ => !config_path.exists(),
+            _ => !config_path.exists() || is_dir_empty(&config_path),
         };
 
         if should_download {
             emit_progress(&app, "download", "Downloading config folder", 81);
+            let nested_config = config_path.join("config");
+            if nested_config.exists() && nested_config.is_dir() {
+                let _ = fs::remove_dir_all(&nested_config);
+            }
             if let Err(e) = download_and_extract_zip(&client, &config_url, &config_path).await
             {
                 eprintln!(
