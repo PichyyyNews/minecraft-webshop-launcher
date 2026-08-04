@@ -13,6 +13,7 @@ const apiLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
 });
 
 // Strict limiter for authentication routes
@@ -25,6 +26,7 @@ const authLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
 });
 
 // Upload limiter
@@ -37,6 +39,7 @@ const uploadLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { trustProxy: false },
 });
 
 module.exports = { apiLimiter, authLimiter, uploadLimiter };

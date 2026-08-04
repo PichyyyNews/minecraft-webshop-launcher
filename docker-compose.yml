@@ -17,6 +17,7 @@ services:
       - .env
     environment:
       - PORT=${BACKEND_PORT:-5000}
+      - MONGO_URI=${MONGO_URI_DOCKER:-mongodb://db:27017/webshopmc}
       - FRONTEND_URL=${FRONTEND_URL:-https://${DOMAIN:-localhost}}
       - API_URL=${API_URL:-https://${DOMAIN:-localhost}/api-backend}
       - LAUNCHER_URL=${LAUNCHER_URL:-https://${DOMAIN:-localhost}:1420}
