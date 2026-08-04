@@ -709,13 +709,13 @@ export default function InfoPage() {
                                 </div>
                                 <div className="space-y-4">
                                     <label className="block text-sm font-medium text-gray-400">{t('admin.settings.buttonAction')}</label>
-                                    <div className="grid grid-cols-3 bg-[#2a2a2a] p-1 rounded-lg gap-1">
+                                    <div className="grid grid-cols-3 bg-[#1e1e1e] p-1.5 rounded-xl gap-1.5 border border-white/10">
                                         <button
                                             type="button"
                                             onClick={() => setSettings(prev => ({ ...prev, heroButtonAction: 'copy_ip' }))}
-                                            className={`py-2 px-3 rounded-md text-xs font-medium transition-all ${settings.heroButtonAction === 'copy_ip'
-                                                ? 'bg-[var(--primary)] text-black shadow-md font-bold'
-                                                : 'text-gray-400 hover:text-white'
+                                            className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all ${settings.heroButtonAction === 'copy_ip'
+                                                ? 'bg-[var(--primary)] text-black shadow-md'
+                                                : 'text-gray-400 hover:text-white hover:bg-white/5'
                                                 }`}
                                         >
                                             Copy IP
@@ -723,9 +723,9 @@ export default function InfoPage() {
                                         <button
                                             type="button"
                                             onClick={() => setSettings(prev => ({ ...prev, heroButtonAction: 'link' }))}
-                                            className={`py-2 px-3 rounded-md text-xs font-medium transition-all ${settings.heroButtonAction === 'link'
-                                                ? 'bg-[var(--primary)] text-black shadow-md font-bold'
-                                                : 'text-gray-400 hover:text-white'
+                                            className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all ${settings.heroButtonAction === 'link'
+                                                ? 'bg-[var(--primary)] text-black shadow-md'
+                                                : 'text-gray-400 hover:text-white hover:bg-white/5'
                                                 }`}
                                         >
                                             Custom Link
@@ -733,9 +733,9 @@ export default function InfoPage() {
                                         <button
                                             type="button"
                                             onClick={() => setSettings(prev => ({ ...prev, heroButtonAction: 'auto_launcher' }))}
-                                            className={`py-2 px-3 rounded-md text-xs font-medium transition-all ${settings.heroButtonAction === 'auto_launcher'
-                                                ? 'bg-[var(--primary)] text-black shadow-md font-bold'
-                                                : 'text-gray-400 hover:text-white'
+                                            className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all ${settings.heroButtonAction === 'auto_launcher'
+                                                ? 'bg-[var(--primary)] text-black shadow-md'
+                                                : 'text-gray-400 hover:text-white hover:bg-white/5'
                                                 }`}
                                         >
                                             Auto Launcher
@@ -743,12 +743,12 @@ export default function InfoPage() {
                                     </div>
 
                                     {settings.heroButtonAction === 'auto_launcher' && (
-                                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2 text-xs text-emerald-300">
-                                            <div className="font-semibold text-emerald-400 flex items-center gap-2">
+                                        <div className="p-4 bg-[#1a1a1a] border border-white/10 rounded-xl space-y-2 text-xs text-gray-300 shadow-inner">
+                                            <div className="font-semibold text-[var(--primary)] flex items-center gap-2 text-sm">
                                                 <span>🚀 Auto Launcher Download Active</span>
                                             </div>
-                                            <p>
-                                                ระบบจะแจกไฟล์ติดตั้ง (.setup.exe, .msi, .exe) ให้ผู้เล่นกดเลือกดาวน์โหลดโดยตรงจากตัวเกมที่ Build ไว้โดยอัตโนมัติ ไม่ต้องใส่ลิงก์ภายนอก
+                                            <p className="text-gray-400 leading-relaxed">
+                                                ระบบจะบริการแจกไฟล์ติดตั้ง (.setup.exe, .msi, .exe) ให้ผู้เล่นกดเลือกดาวน์โหลดโดยตรงจากตัวเกมที่ Build ไว้โดยอัตโนมัติ ไม่ต้องใส่ลิงก์ภายนอกหรืออัปโหลดฝากไฟล์
                                             </p>
                                         </div>
                                     )}
