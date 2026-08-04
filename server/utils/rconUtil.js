@@ -5,11 +5,16 @@ const RconLog = require('../models/RconLog');
 let rconClient = null;
 let isConnecting = false;
 
+const { decrypt } = require('./encryption');
+
 // Helper to get RCON settings
 const getRconSettings = async () => {
     const settings = await Setting.find({ key: { $in: ['rconHost', 'rconPort', 'rconPassword'] } });
     const config = {};
     settings.forEach(s => config[s.key] = s.value);
+    if (config.rconPassword) {
+        config.rconPassword = decrypt(config.rconPassword);
+    }
     return config;
 };
 

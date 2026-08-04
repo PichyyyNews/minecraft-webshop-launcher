@@ -66,4 +66,14 @@ router.get('/authme/users', protect, admin, getAuthMeUsersCtrl);
 router.delete('/authme/users/:username', protect, admin, deleteAuthMeUserCtrl);
 router.post('/authme/sync', protect, admin, syncAuthMeUsers);
 
+const AuditLog = require('../models/AuditLog');
+router.get('/audit-logs', protect, admin, async (req, res) => {
+    try {
+        const logs = await AuditLog.find().sort({ createdAt: -1 }).limit(100);
+        res.json(logs);
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to fetch audit logs' });
+    }
+});
+
 module.exports = router;

@@ -184,15 +184,22 @@ app.get('/api/settings', async (req, res) => {
 app.post('/api/settings', async (req, res) => {
   try {
     const Setting = require('./models/Setting');
+    const { encrypt } = require('./utils/encryption');
+    const { logAuditAction } = require('./utils/auditLogger');
     const updates = req.body;
 
-    for (const [key, value] of Object.entries(updates)) {
+    for (let [key, value] of Object.entries(updates)) {
+      if (key === 'rconPassword' && value && !value.includes(':')) {
+        value = encrypt(value);
+      }
       await Setting.findOneAndUpdate(
         { key },
         { value },
         { upsert: true, new: true }
       );
     }
+
+    await logAuditAction(req, 'UPDATE_SETTINGS', 'System Settings', { updatedKeys: Object.keys(updates) });
 
     res.json({ message: 'Settings updated successfully' });
   } catch (error) {
