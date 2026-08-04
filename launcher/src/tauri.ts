@@ -47,8 +47,15 @@ export type LauncherMod = {
   sha1: string;
 };
 
+export function getLauncherAppName() {
+  if (typeof import.meta.env.VITE_LAUNCHER_PRODUCT_NAME === "string" && import.meta.env.VITE_LAUNCHER_PRODUCT_NAME !== "") {
+    return import.meta.env.VITE_LAUNCHER_PRODUCT_NAME;
+  }
+  return "Pixel-Kati";
+}
+
 export const defaultLauncherConfig: LauncherConfig = {
-  appName: "Pixel-Kati",
+  appName: getLauncherAppName(),
   headline: "พร้อมเข้าเซิร์ฟเวอร์",
   primaryColor: "#8fde5d",
   logoUrl: "",
