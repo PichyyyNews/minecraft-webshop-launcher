@@ -90,9 +90,38 @@ export const getBaseApiUrl = () => {
   return "http://localhost:5000";
 };
 
-const apiUrl = getBaseApiUrl();
+let activeApiUrl = getBaseApiUrl().replace(/\/$/, "");
 
-export const getApiUrl = () => apiUrl.replace(/\/$/, "");
+export const getApiUrl = () => activeApiUrl;
+
+export async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const primaryUrl = `${getApiUrl()}${cleanPath}`;
+  try {
+    const res = await fetch(primaryUrl, init);
+    return res;
+  } catch (err) {
+    const fallbacks = [
+      "http://localhost:5000",
+      "http://127.0.0.1:5000",
+      "http://localhost/api-backend"
+    ];
+    for (const fallback of fallbacks) {
+      if (activeApiUrl === fallback) continue;
+      try {
+        const fallbackUrl = `${fallback}${cleanPath}`;
+        const res = await fetch(fallbackUrl, init);
+        if (res.ok || res.status < 500) {
+          activeApiUrl = fallback;
+          return res;
+        }
+      } catch {
+        // Try next fallback
+      }
+    }
+    throw err;
+  }
+}
 
 export type LauncherArticle = {
   _id: string;
@@ -148,7 +177,7 @@ export async function getLauncherStatus(): Promise<LauncherStatus> {
 }
 
 export async function getLauncherConfig(): Promise<LauncherConfig> {
-  const response = await fetch(`${apiUrl}/api/launcher/config?_t=${Date.now()}`, {
+  const response = await fetchApi(`/api/launcher/config?_t=${Date.now()}`, {
     cache: "no-store",
     headers: {
       "x-launcher-version": LAUNCHER_VERSION
@@ -167,7 +196,7 @@ export async function getLauncherConfig(): Promise<LauncherConfig> {
 }
 
 export async function getLauncherContent(): Promise<LauncherContent> {
-  const response = await fetch(`${apiUrl}/api/launcher/content?_t=${Date.now()}`, {
+  const response = await fetchApi(`/api/launcher/content?_t=${Date.now()}`, {
     cache: "no-store",
     headers: {
       "x-launcher-version": LAUNCHER_VERSION
@@ -182,7 +211,7 @@ export async function getLauncherContent(): Promise<LauncherContent> {
 }
 
 export async function loginLauncherUser(username: string, password: string): Promise<LauncherUser> {
-  const response = await fetch(`${apiUrl}/api/auth/login`, {
+  const response = await fetchApi(`/api/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -215,7 +244,7 @@ export async function prepareAndLaunch(config: LauncherConfig, username: string,
     let needsRelogin = false;
 
     if (token) {
-      const response = await fetch(`${getApiUrl()}/api/launcher/auto-login`, {
+      const response = await fetchApi(`/api/launcher/auto-login`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
