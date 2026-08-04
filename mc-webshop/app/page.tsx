@@ -95,6 +95,7 @@ export default function Home() {
   const [backgroundUrl, setBackgroundUrl] = useState('/default-bg.png');
   const [serverStatus, setServerStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [downloadDropdownOpen, setDownloadDropdownOpen] = useState(false);
   const [cards, setCards] = useState<Card[]>([]);
   const [loadingCards, setLoadingCards] = useState(true);
   const [wikis, setWikis] = useState<Wiki[]>([]);
@@ -305,8 +306,84 @@ export default function Home() {
               >
                 {t('home.browseShop')}
               </Link>
-              <div className="flex flex-col items-center gap-4 w-full sm:w-auto">
-                {heroButtonAction === 'link' ? (
+              <div className="flex flex-col items-center gap-4 w-full sm:w-auto relative">
+                {heroButtonAction === 'auto_launcher' || heroButtonAction === 'automatic' ? (
+                  <div className="relative w-full sm:w-auto">
+                    <button
+                      onClick={() => setDownloadDropdownOpen(prev => !prev)}
+                      className="w-full sm:w-auto px-8 py-4 bg-[var(--primary)] text-black font-bold text-lg rounded-full hover:brightness-110 transition-all transform hover:scale-105 shadow-xl hover:shadow-[var(--primary)]/20 active:scale-95 min-w-[200px] flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                      {heroButtonText || t('common.download')}
+                      <svg className={`w-4 h-4 transition-transform duration-200 ${downloadDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+
+                    {downloadDropdownOpen && (
+                      <div className="absolute top-full mt-3 right-0 sm:left-0 z-50 w-72 bg-[#181818]/95 backdrop-blur-md border border-white/10 rounded-2xl p-2 shadow-2xl animate-in fade-in slide-in-from-top-2">
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-white/5 mb-1 text-left">
+                          เลือกรูปแบบไฟล์ติดตั้ง
+                        </div>
+
+                        <a
+                          href={`${API_URL}/api/launcher/download/setup`}
+                          download
+                          onClick={() => setDownloadDropdownOpen(false)}
+                          className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors text-left group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-110 transition-transform">
+                            EXE
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-white group-hover:text-[var(--primary)] transition-colors">
+                              Windows Setup (.setup.exe)
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              ติดตั้งง่าย อัปเดตอัตโนมัติ (แนะนำ)
+                            </div>
+                          </div>
+                        </a>
+
+                        <a
+                          href={`${API_URL}/api/launcher/download/msi`}
+                          download
+                          onClick={() => setDownloadDropdownOpen(false)}
+                          className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors text-left group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-110 transition-transform">
+                            MSI
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-white group-hover:text-[var(--primary)] transition-colors">
+                              MSI Package (.msi)
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              ไฟล์ติดตั้ง Windows Installer
+                            </div>
+                          </div>
+                        </a>
+
+                        <a
+                          href={`${API_URL}/api/launcher/download/exe`}
+                          download
+                          onClick={() => setDownloadDropdownOpen(false)}
+                          className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/10 transition-colors text-left group"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs shrink-0 group-hover:scale-110 transition-transform">
+                            RUN
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-bold text-white group-hover:text-[var(--primary)] transition-colors">
+                              Portable Binary (.exe)
+                            </div>
+                            <div className="text-xs text-gray-400">
+                              แบบพกพา กดเปิดเล่นได้ทันที
+                            </div>
+                          </div>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : heroButtonAction === 'link' ? (
                   <Link
                     href={heroButtonLink || '#'}
                     target="_blank"

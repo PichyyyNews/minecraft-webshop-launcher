@@ -8,6 +8,8 @@ const {
     getModLoaderVersions,
     getModrinthCategories,
     searchModrinthMods,
+    getLauncherDownloadInfo,
+    downloadLauncherBinary,
 } = require('../controllers/launcherController');
 
 const {
@@ -20,6 +22,8 @@ const { checkLauncherVersion } = require('../middleware/launcherVersionMiddlewar
 
 router.get('/config', getLauncherConfig);
 router.get('/content', getLauncherContent);
+router.get('/download-info', getLauncherDownloadInfo);
+router.get('/download/:type', downloadLauncherBinary);
 router.get('/metadata/minecraft-versions', getMinecraftVersions);
 router.get('/metadata/mod-loaders', getModLoaders);
 router.get('/metadata/mod-loader-versions/:loader', getModLoaderVersions);

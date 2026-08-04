@@ -608,6 +608,82 @@ const uploadLauncherBackground = async (req, res) => {
     }
 };
 
+const findLauncherBinaryFile = (type) => {
+    const searchDirs = [
+        path.join(__dirname, '..', 'release', 'bundle', 'nsis'),
+        path.join(__dirname, '..', 'release', 'bundle', 'msi'),
+        path.join(__dirname, '..', 'release'),
+        path.join(__dirname, '..', '..', 'launcher', 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
+        path.join(__dirname, '..', '..', 'launcher', 'src-tauri', 'target', 'release', 'bundle', 'msi'),
+        path.join(__dirname, '..', '..', 'launcher', 'src-tauri', 'target', 'release'),
+        path.join(__dirname, '..', 'uploads', 'launcher'),
+    ];
+
+    for (const dir of searchDirs) {
+        if (!fs.existsSync(dir)) continue;
+        const files = fs.readdirSync(dir);
+
+        if (type === 'setup') {
+            const setupFile = files.find(f => f.toLowerCase().endsWith('-setup.exe') || f.toLowerCase().endsWith('.setup.exe'));
+            if (setupFile) return { filePath: path.join(dir, setupFile), fileName: setupFile };
+        } else if (type === 'msi') {
+            const msiFile = files.find(f => f.toLowerCase().endsWith('.msi'));
+            if (msiFile) return { filePath: path.join(dir, msiFile), fileName: msiFile };
+        } else if (type === 'exe') {
+            const exeFile = files.find(f => f.toLowerCase().endsWith('.exe') && !f.toLowerCase().endsWith('-setup.exe'));
+            if (exeFile) return { filePath: path.join(dir, exeFile), fileName: exeFile };
+        }
+    }
+    return null;
+};
+
+const getLauncherDownloadInfo = async (req, res) => {
+    try {
+        const setup = findLauncherBinaryFile('setup');
+        const msi = findLauncherBinaryFile('msi');
+        const exe = findLauncherBinaryFile('exe');
+
+        res.json({
+            available: Boolean(setup || msi || exe),
+            setupAvailable: Boolean(setup),
+            msiAvailable: Boolean(msi),
+            exeAvailable: Boolean(exe),
+            files: {
+                setup: setup ? setup.fileName : null,
+                msi: msi ? msi.fileName : null,
+                exe: exe ? exe.fileName : null,
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch launcher download info' });
+    }
+};
+
+const downloadLauncherBinary = async (req, res) => {
+    try {
+        const type = req.params.type || 'setup';
+        let fileObj = findLauncherBinaryFile(type);
+
+        if (!fileObj && type !== 'setup') {
+            fileObj = findLauncherBinaryFile('setup');
+        }
+        if (!fileObj) {
+            fileObj = findLauncherBinaryFile('exe');
+        }
+
+        if (!fileObj) {
+            return res.status(404).json({ message: 'Launcher binary file not found.' });
+        }
+
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileObj.fileName}"`);
+        res.download(fileObj.filePath, fileObj.fileName);
+    } catch (error) {
+        console.error('Error serving launcher binary:', error);
+        res.status(500).json({ message: 'Failed to download launcher binary file' });
+    }
+};
+
 module.exports = {
     getLauncherConfig,
     updateLauncherConfig,
@@ -621,4 +697,6 @@ module.exports = {
     getModLoaderVersions,
     getModrinthCategories,
     searchModrinthMods,
+    getLauncherDownloadInfo,
+    downloadLauncherBinary,
 };

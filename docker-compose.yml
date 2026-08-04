@@ -25,6 +25,7 @@ services:
       - LAUNCHER_URL=${LAUNCHER_URL:-https://${DOMAIN:-localhost}:1420}
     volumes:
       - ./server/uploads:/app/uploads
+      - ./launcher/src-tauri/target/release:/app/release:ro
     depends_on:
       - db
     networks:
