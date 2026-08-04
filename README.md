@@ -1,163 +1,175 @@
-# 🎮 MineCraft WebShop
+﻿# 🎮 Minecraft Webshop & Desktop Launcher System
 
-A full-featured web shop system for Minecraft servers, complete with a store management system, membership system, and Admin Dashboard.
+A modern, full-featured web shop and custom desktop launcher system for Minecraft servers. Built with Next.js, Express, MongoDB, Tauri (Rust), and Caddy Reverse Proxy.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![Express](https://img.shields.io/badge/Express-5-green?logo=express)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose%209-green?logo=mongodb)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-4-blue?logo=tailwindcss)
+![Tauri](https://img.shields.io/badge/Tauri-2-blue?logo=tauri)
+![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)
+![Caddy](https://img.shields.io/badge/Caddy-2-green?logo=caddy)
+
+---
 
 ## ✨ Features
 
-- 🛒 **Store System** — Buy and sell items, packages, and services
-- 💳 **Payment System** — Supports PromptPay QR Code and Slip Verification
-- 👤 **Membership System** — Registration, Login, and Profile Management
-- 🎁 **Angpao System** — Lucky-draw reward envelopes for players
-- 📊 **Admin Dashboard** — Manage the store, users, and view statistics
-- 🌐 **Minecraft Server Integration** — Connect and interact with your Minecraft server
+- 🛒 **Store System** — Buy and sell items, rank packages, and custom RCON command triggers.
+- 🚀 **Automatic Launcher Download Mode** — Serves fresh Launcher builds (setup.exe, .msi, .exe) directly to players without external Google Drive links.
+- 🖥️ **Custom Desktop Launcher (Tauri + Rust)** — Auto mod-loader installation, options/config overwrite control, and seamless web authentication.
+- 🔑 **AES-256 RCON Encryption** — Encrypts Minecraft server RCON credentials at rest in MongoDB.
+- 📝 **Admin Audit Logging System** — Tracks all administrative actions (settings updates, RCON commands, points modification).
+- 🛡️ **AuthMe MySQL Integration** — Synchronizes user registrations and passwords directly with Minecraft server AuthMe database.
+- 💳 **Payment & Slip Verification** — PromptPay QR code generation and Slip2Go verification.
+- 🌐 **Caddy Reverse Proxy with Auto SSL** — Automatic Let's Encrypt / ZeroSSL HTTPS certificates and Cloudflare Proxy support.
+
+---
 
 ## 📁 Project Structure
 
-```
-mcwebshop2/
-├── mc-webshop/          # Frontend (Next.js 16 + TailwindCSS)
-│   ├── app/             # App Router pages & components
-│   ├── public/          # Static assets
+`	ext
+mcwebshop/
+├── docker-compose.yml       # Production container orchestration
+├── .env                     # Centralized environment configuration
+├── Caddyfile                # Reverse proxy & SSL configuration
+├── Document/                # System documentation & security audit reports
+│
+├── mc-webshop/              # Web Frontend (Next.js 16 + TailwindCSS)
+│   ├── app/                 # App Router pages & admin panel
 │   └── ...
 │
-├── server/              # Backend (Express.js + MongoDB)
-│   ├── controllers/     # Route controllers
-│   ├── models/          # Mongoose models
-│   ├── routes/          # API routes
-│   ├── middleware/      # Auth & other middlewares
-│   └── utils/           # Utility functions
+├── server/                  # Backend API (Node.js Express + MongoDB)
+│   ├── controllers/         # API Controllers & RCON logic
+│   ├── models/              # Mongoose schemas (User, Product, AuditLog, etc.)
+│   ├── routes/              # Express API routes
+│   └── utils/               # AES-256 encryption, Audit logger & AuthMe DB
 │
-└── launcher/            # Desktop Launcher (Tauri + Vite)
-```
+└── launcher/                # Desktop Application (Tauri 2 + Vite + Rust)
+    ├── src/                 # React UI frontend
+    └── src-tauri/           # Rust native launcher backend
+`
 
-## 🚀 Getting Started
+---
 
-### Prerequisites
+## 🐳 Step-by-Step Production Deployment Guide (Docker)
 
-- Node.js 18+
-- MongoDB
-- npm or yarn
-- Rust + Tauri CLI (for the desktop launcher)
+Follow these steps to deploy the complete system to a production server (Ubuntu Server 22.04/24.04 LTS or Windows Server).
 
-### Installation
+### 1. Prerequisites
+- **Server**: Ubuntu 22.04/24.04 LTS or Windows Server with Docker Engine & Docker Compose installed.
+- **Domain Name**: Domain pointing (A Record) to your server's public IP address.
+- **Port Access**: Open ports 80, 443, and 25565 in your server firewall.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/PichyyyNews/minecraft-webshop-launcher.git
-   cd mcwebshop2
-   ```
+---
 
-2. **Setup Backend Server**
-   ```bash
-   cd server
-   npm install
-   ```
+### 2. Step 1: Clone Repository & Configure Environment
 
-   Create a `.env` file:
-   ```env
-   MONGODB_URI=your_mongodb_connection_string
-   JWT_SECRET=your_jwt_secret
-   PORT=5000
-   ```
+Clone the repository to your production server:
 
-3. **Setup Web Client**
-   ```bash
-   cd mc-webshop
-   npm install
-   ```
+`ash
+git clone https://github.com/PichyyyNews/minecraft-webshop-launcher.git
+cd minecraft-webshop-launcher
+`
 
-   Create a `.env.local` file:
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:5000
-   ```
+Copy .env.example to .env:
 
-### Running the Application
+`ash
+cp .env.example .env
+`
 
-**Development:**
+Edit .env for production:
 
-```bash
-# Terminal 1 — Start Backend Server
-cd server
-npm start
+`env
+# Domain settings
+DOMAIN=yourdomain.com
 
-# Terminal 2 — Start Web Client
-cd mc-webshop
-npm run dev
-```
+# Production Security Secrets (generate via: openssl rand -hex 32)
+JWT_SECRET=your_super_secret_jwt_key_here_must_be_32_bytes_long
+ADMIN_ROOT_USER=root
+ADMIN_ROOT_PASS=YourStrongAdminPasswordHere!
 
-- **Web Client**: http://localhost:3000
-- **API Server**: http://localhost:5000
+# Launcher Environment
+VITE_LAUNCHER_PRODUCT_NAME=Pixel-Kati
+VITE_LAUNCHER_API_URL=https://yourdomain.com/api-backend
+VITE_LAUNCHER_WEBSITE_URL=https://yourdomain.com
 
-## 🖥️ Desktop Launcher
+# AuthMe MySQL Sync (Optional)
+AUTHME_MYSQL_HOST=127.0.0.1
+AUTHME_MYSQL_PORT=3306
+AUTHME_MYSQL_USER=authme_user
+AUTHME_MYSQL_PASSWORD=authme_password
+AUTHME_MYSQL_DATABASE=authme_db
+`
 
-This repository also includes a Tauri-based desktop launcher located in `launcher/`.
+---
 
-### Local Development
+### 3. Step 2: Build Launcher Release Executables
 
-```bash
+Build the launcher binary with production domain URLs:
+
+`ash
 cd launcher
 npm install
-npm run dev
-```
+npm run build
+cd ..
+`
 
-The Tauri app runs a Vite frontend on `http://localhost:1420` and opens the native desktop window.
+The compiled binaries will be generated at:
+- launcher/src-tauri/target/release/bundle/nsis/Pixel-Kati_0.1.10_x64-setup.exe
+- launcher/src-tauri/target/release/bundle/msi/Pixel-Kati_0.1.10_x64_en-US.msi
+- launcher/src-tauri/target/release/pixel-kati.exe
 
-### Web Preview Only
+These executables are automatically mounted into the ackend container so players can download them directly from the homepage!
 
-```bash
-cd launcher
-npm run dev:web
-```
+---
 
-### Build Checks
+### 4. Step 3: Launch Docker Containers
 
-```bash
-cd launcher
-npm run build:web
-cd src-tauri
-cargo check
-```
+Start all services using Docker Compose:
 
-### Docker
+`ash
+docker compose up -d --build
+`
 
-The Docker image serves the launcher frontend preview through nginx. Desktop packaging should still be done on the target OS using Tauri.
+Verify that all containers are running:
 
-```bash
-docker compose up -d launcher
-```
+`ash
+docker compose ps
+`
 
-Launcher preview: `http://localhost:1420`
+Expected output:
+- mc-webshop-db: MongoDB (Running)
+- mc-webshop-backend: Express API (Running)
+- mc-webshop-frontend: Next.js Web App (Running)
+- mc-webshop-proxy: Caddy Reverse Proxy (Running - Port 80/443)
 
-## 🛠️ Tech Stack
+---
 
-### Frontend
-- **Next.js 16** — React framework with App Router
-- **TailwindCSS 4** — Utility-first CSS framework
-- **Lucide React** — Icon library
-- **Recharts** — Charts & Analytics
-- **SkinView3D** — Minecraft skin viewer
+## 🔒 Port Minimization & Firewall Strategy
 
-### Backend
-- **Express.js 5** — Web framework
-- **MongoDB + Mongoose 9** — Database
-- **JWT** — Authentication
-- **Nodemailer** — Email service
-- **Sharp** — Image processing
+For maximum security, only expose necessary public ports on your server firewall.
 
-### Desktop Launcher
-- **Tauri** — Native desktop application framework
-- **Vite** — Fast frontend build tool
-- **Rust** — Backend systems language for Tauri
+| Port | Protocol | Firewall Status | Purpose |
+| :--- | :--- | :--- | :--- |
+| **80** | TCP | 🟢 **Public** | HTTP Traffic (Auto-redirect to HTTPS) |
+| **443** | TCP | 🟢 **Public** | HTTPS Traffic (Next.js Web & Backend API via Caddy Proxy) |
+| **25565** | TCP | 🟢 **Public** | Minecraft Java Game Server |
+| **19132** | UDP | 🟢 **Public (Optional)** | Minecraft Bedrock Server (GeyserMC) |
+| **5000** | TCP | 🔴 **Internal Only** | Express Backend API (Accessed strictly through Caddy) |
+| **3000** | TCP | 🔴 **Internal Only** | Next.js Frontend Web (Accessed strictly through Caddy) |
+| **27017** | TCP | 🔴 **Internal Only** | MongoDB Database (Never expose publicly) |
+| **25575** | TCP | 🔴 **Internal Only** | RCON Command Port |
 
-## 👥 Contributors
+---
 
-- **PichyyyNews** — Developer
+## 📄 Documentation & System Audit Reports
+
+Detailed architectural documentation and vulnerability reports are stored in the Document/ directory:
+
+- 📜 **Document/SYS-001_production-deployment-audit-security-report_P0-CRITICAL_20260804_1546_system-infra.md**
+
+---
 
 ## 📄 License
 
 This project is licensed under the ISC License.
+
