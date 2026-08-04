@@ -602,6 +602,11 @@ const translations = {
         'error.retry': 'ลองใหม่อีกครั้ง',
         'error.backHome': 'กลับสู่หน้าหลัก',
 
+        // Common
+        'common.download': 'ดาวน์โหลดตัวเกม',
+        'common.copied': 'คัดลอกแล้ว',
+        'common.copyIp': 'คัดลอก IP',
+
         // Wiki Page
         'wiki.title': 'วิกิชุมชน',
         'wiki.subtitle': 'สำรวจคู่มือ บทช่วยสอน และการอัปเดตจากชุมชน',
@@ -609,6 +614,10 @@ const translations = {
         'wiki.checkBack': 'กลับมาตรวจสอบใหม่ภายหลัง!',
     },
     en: {
+        // Common
+        'common.download': 'Download Game',
+        'common.copied': 'Copied',
+        'common.copyIp': 'Copy IP',
         // Navbar
         'nav.home': 'Home',
         'nav.store': 'Store',

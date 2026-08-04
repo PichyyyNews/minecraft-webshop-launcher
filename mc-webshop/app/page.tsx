@@ -298,7 +298,7 @@ export default function Home() {
           </ScrollAnimation>
 
           <ScrollAnimation animation="fade-up" delay={400}>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12 items-start w-full sm:w-auto">
+            <div className={`flex flex-col sm:flex-row gap-4 justify-center items-center w-full sm:w-auto transition-all duration-300 ${downloadDropdownOpen ? 'mb-64 sm:mb-72' : 'mb-12'}`}>
               {/* Buttons content remains the same */}
               <Link
                 href="/shop"
@@ -314,12 +314,12 @@ export default function Home() {
                       className="w-full sm:w-auto px-8 py-4 bg-[var(--primary)] text-black font-bold text-lg rounded-full hover:brightness-110 transition-all transform hover:scale-105 shadow-xl hover:shadow-[var(--primary)]/20 active:scale-95 min-w-[200px] flex items-center justify-center gap-2"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                      {(heroButtonText && heroButtonText !== 'Copy IP' && heroButtonText !== 'คัดลอก IP') ? heroButtonText : (t('common.download') || 'ดาวน์โหลดตัวเกม')}
+                      {(heroButtonText && heroButtonText !== 'Copy IP' && heroButtonText !== 'คัดลอก IP' && heroButtonText !== 'common.download') ? heroButtonText : (t('common.download') === 'common.download' ? 'ดาวน์โหลดตัวเกม' : t('common.download'))}
                       <svg className={`w-4 h-4 transition-transform duration-200 ${downloadDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </button>
 
                     {downloadDropdownOpen && (
-                      <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 z-50 w-72 sm:w-80 bg-[#121212]/95 backdrop-blur-xl border border-white/15 rounded-2xl p-2.5 shadow-[0_20px_50px_rgba(0,0,0,0.8)] animate-in fade-in slide-in-from-top-2">
+                      <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 z-[100] w-72 sm:w-80 bg-[#161616] border border-white/20 rounded-2xl p-2.5 shadow-[0_25px_60px_-10px_rgba(0,0,0,0.95)] animate-in fade-in slide-in-from-top-2">
                         <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-white/5 mb-1 text-left">
                           เลือกรูปแบบไฟล์ติดตั้ง
                         </div>
@@ -391,7 +391,7 @@ export default function Home() {
                     className="w-full sm:w-auto px-8 py-4 bg-[var(--primary)] text-black font-bold text-lg rounded-full hover:brightness-110 transition-all transform hover:scale-105 shadow-xl hover:shadow-[var(--primary)]/20 active:scale-95 min-w-[160px] flex items-center justify-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    {heroButtonText || t('common.download')}
+                    {(heroButtonText && heroButtonText !== 'common.download') ? heroButtonText : (t('common.download') === 'common.download' ? 'ดาวน์โหลดตัวเกม' : t('common.download'))}
                   </Link>
                 ) : (
                   <button
