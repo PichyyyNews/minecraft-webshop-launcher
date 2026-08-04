@@ -128,22 +128,33 @@ const sanitizeConfigPayload = (payload) => {
     const modLoaderVersion = installType === 'modded' ? String(payload.modLoaderVersion || '').trim() : '';
 
     return {
-        appName: payload.appName,
-        headline: payload.headline,
-        primaryColor: payload.primaryColor,
-        logoUrl: payload.logoUrl,
+        appName: payload.appName !== undefined ? payload.appName : DEFAULT_CONFIG.appName,
+        headline: payload.headline !== undefined ? payload.headline : DEFAULT_CONFIG.headline,
+        description: payload.description !== undefined ? payload.description : DEFAULT_CONFIG.description,
+        serverName: payload.serverName !== undefined ? payload.serverName : DEFAULT_CONFIG.serverName,
+        serverAddress: payload.serverAddress !== undefined ? payload.serverAddress : DEFAULT_CONFIG.serverAddress,
+        serverPort: payload.serverPort !== undefined ? payload.serverPort : DEFAULT_CONFIG.serverPort,
         installType,
         installFolderName: payload.installFolderName || DEFAULT_CONFIG.installFolderName,
         minecraftVersion,
         loaderType,
         modLoaderVersion,
-        optionsFileUrl: payload.optionsFileUrl,
-        configFileUrl: payload.configFileUrl,
-        resourcePackUrl: payload.resourcePackUrl,
-        minLauncherVersion: payload.minLauncherVersion,
-        latestLauncherVersion: payload.latestLauncherVersion,
-        launcherUpdateUrl: payload.launcherUpdateUrl,
-        launcherUpdateNotes: payload.launcherUpdateNotes,
+        optionsFileUrl: payload.optionsFileUrl || '',
+        configFileUrl: payload.configFileUrl || '',
+        resourcePackUrl: payload.resourcePackUrl || '',
+        primaryColor: payload.primaryColor || DEFAULT_CONFIG.primaryColor,
+        backgroundUrl: payload.backgroundUrl || '',
+        logoUrl: payload.logoUrl || '',
+        minMemoryMb: payload.minMemoryMb || DEFAULT_CONFIG.minMemoryMb,
+        maxMemoryMb: payload.maxMemoryMb || DEFAULT_CONFIG.maxMemoryMb,
+        newsTitle: payload.newsTitle || DEFAULT_CONFIG.newsTitle,
+        newsBody: payload.newsBody || DEFAULT_CONFIG.newsBody,
+        maintenanceMode: Boolean(payload.maintenanceMode),
+        maintenanceMessage: payload.maintenanceMessage || DEFAULT_CONFIG.maintenanceMessage,
+        minLauncherVersion: payload.minLauncherVersion || DEFAULT_CONFIG.minLauncherVersion,
+        latestLauncherVersion: payload.latestLauncherVersion || DEFAULT_CONFIG.latestLauncherVersion,
+        launcherUpdateUrl: payload.launcherUpdateUrl || '',
+        launcherUpdateNotes: payload.launcherUpdateNotes || '',
         optionsOverwriteMode: payload.optionsOverwriteMode !== undefined ? payload.optionsOverwriteMode : 'first-time',
         configOverwriteMode: payload.configOverwriteMode !== undefined ? payload.configOverwriteMode : 'first-time',
         mods: sanitizeMods(payload.mods, installType, minecraftVersion, loaderType),
@@ -574,10 +585,34 @@ const searchModrinthMods = async (req, res) => {
     }
 };
 
+const uploadLauncherBackground = async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No background uploaded.' });
+    }
+
+    try {
+        const backgroundUrl = `/${req.file.path.replace(/\\/g, '/')}`;
+        const config = await LauncherConfig.findOneAndUpdate(
+            {},
+            { $set: { backgroundUrl } },
+            { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+
+        res.json({
+            message: 'Launcher background uploaded successfully',
+            url: backgroundUrl,
+            config,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to upload launcher background' });
+    }
+};
+
 module.exports = {
     getLauncherConfig,
     updateLauncherConfig,
     uploadLauncherLogo,
+    uploadLauncherBackground,
     uploadLauncherFile,
     uploadLauncherPresetFile,
     getLauncherContent,

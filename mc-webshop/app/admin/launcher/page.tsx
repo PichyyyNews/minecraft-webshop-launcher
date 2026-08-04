@@ -181,6 +181,7 @@ export default function AdminLauncherPage() {
     const router = useRouter();
     const [config, setConfig] = useState<LauncherConfig>(defaultConfig);
     const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
     const [optionsFile, setOptionsFile] = useState<File | null>(null);
     const [configFile, setConfigFile] = useState<File | null>(null);
     const [updaterFile, setUpdaterFile] = useState<File | null>(null);
@@ -592,6 +593,25 @@ export default function AdminLauncherPage() {
         return data.url as string;
     };
 
+    const saveBackground = async (token: string) => {
+        if (!backgroundFile) return config.backgroundUrl;
+
+        const formData = new FormData();
+        formData.append('background', backgroundFile);
+
+        const res = await fetch(`${API_URL}/api/admin/launcher/background`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+            body: formData,
+        });
+
+        if (!res.ok) throw new Error('Failed to upload background');
+        const data = await res.json();
+        return data.url as string;
+    };
+
     const uploadLauncherFile = async (token: string, type: 'options' | 'config' | 'updater', file: File | null) => {
         if (!file) {
             if (type === 'options') return config.optionsFileUrl;
@@ -773,10 +793,11 @@ export default function AdminLauncherPage() {
             if (!token) throw new Error('Missing admin token');
 
             const logoUrl = await saveLogo(token);
+            const backgroundUrl = await saveBackground(token);
             const optionsFileUrl = await uploadLauncherFile(token, 'options', optionsFile);
             const configFileUrl = await uploadLauncherFile(token, 'config', configFile);
             const launcherUpdateUrl = await uploadLauncherFile(token, 'updater', updaterFile);
-            const payload = { ...config, logoUrl, optionsFileUrl, configFileUrl, launcherUpdateUrl };
+            const payload = { ...config, logoUrl, backgroundUrl, optionsFileUrl, configFileUrl, launcherUpdateUrl };
 
             const res = await fetch(`${API_URL}/api/admin/launcher/config`, {
                 method: 'PUT',
@@ -799,6 +820,7 @@ export default function AdminLauncherPage() {
             const data = await res.json();
             setConfig(prev => ({ ...prev, ...data.config }));
             setLogoFile(null);
+            setBackgroundFile(null);
             setOptionsFile(null);
             setConfigFile(null);
             setUpdaterFile(null);

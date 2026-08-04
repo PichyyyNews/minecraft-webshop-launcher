@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getAnalytics, getSlip2GoInfo } = require('../controllers/adminController');
-const { updateLauncherConfig, uploadLauncherLogo, uploadLauncherFile, uploadLauncherPresetFile } = require('../controllers/launcherController');
+const { updateLauncherConfig, uploadLauncherLogo, uploadLauncherBackground, uploadLauncherFile, uploadLauncherPresetFile } = require('../controllers/launcherController');
 const { upload, processImage } = require('../middleware/uploadMiddleware');
 const { uploadLimiter } = require('../middleware/rateLimitMiddleware');
 const multer = require('multer');
@@ -22,6 +22,7 @@ router.get('/slip2go/info', protect, admin, getSlip2GoInfo);
 
 router.put('/launcher/config', protect, admin, updateLauncherConfig);
 router.post('/launcher/logo', protect, admin, uploadLimiter, upload.single('logo'), processImage('launcher'), uploadLauncherLogo);
+router.post('/launcher/background', protect, admin, uploadLimiter, upload.single('background'), processImage('launcher'), uploadLauncherBackground);
 
 const launcherUploadDir = path.join(__dirname, '..', 'uploads', 'launcher');
 if (!fs.existsSync(launcherUploadDir)) {
