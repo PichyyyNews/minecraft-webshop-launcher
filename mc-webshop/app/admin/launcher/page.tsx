@@ -9,8 +9,13 @@ import Modal from '../../components/Modal';
 type LauncherConfig = {
     appName: string;
     headline: string;
+    description?: string;
+    serverName?: string;
+    serverAddress?: string;
+    serverPort?: string;
     primaryColor: string;
     logoUrl: string;
+    backgroundUrl?: string;
     installType: 'vanilla' | 'modded';
     installFolderName: string;
     minecraftVersion: string;
@@ -27,6 +32,12 @@ type LauncherConfig = {
     launcherUpdateNotes: string;
     optionsOverwriteMode?: 'none' | 'first-time' | 'always';
     configOverwriteMode?: 'none' | 'first-time' | 'always';
+    minMemoryMb?: number;
+    maxMemoryMb?: number;
+    newsTitle?: string;
+    newsBody?: string;
+    maintenanceMode?: boolean;
+    maintenanceMessage?: string;
 };
 
 type LauncherMod = {
@@ -152,6 +163,7 @@ const defaultConfig: LauncherConfig = {
     headline: 'พร้อมเข้าเซิร์ฟเวอร์',
     primaryColor: '#8fde5d',
     logoUrl: '',
+    backgroundUrl: '',
     installType: 'vanilla',
     installFolderName: 'minecraft-client',
     minecraftVersion: '1.21.8',
