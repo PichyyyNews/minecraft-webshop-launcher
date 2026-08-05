@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { API_URL } from '../../../utils/config';
 import Modal from '../../../components/Modal';
@@ -498,9 +499,9 @@ export default function AdminProductsPage() {
                                                     }`}
                                                 >
                                                     {product.isHide ? (
-                                                        <>🙈 ซ่อนอยู่</>
+                                                        <span className="flex items-center gap-1"><EyeOff className="w-3.5 h-3.5" /> ซ่อนอยู่</span>
                                                     ) : (
-                                                        <>👁️ แสดงอยู่</>
+                                                        <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" /> แสดงอยู่</span>
                                                     )}
                                                 </button>
                                             </td>

@@ -390,13 +390,13 @@ export default function AdminBackupPage() {
             {/* Tab Navigation */}
             <div className="flex gap-2 border-b border-white/10 overflow-x-auto pb-2">
                 {[
-                    { id: 'overview', label: '📊 ภาพรวม & DB Graphs', icon: BarChart3 },
-                    { id: 'settings', label: '⚙️ ตั้งค่าการเชื่อมต่อ S3 / Cloud', icon: Settings },
-                    { id: 'jobs', label: '📸 รายการ Backup & Snapshots', icon: Database },
-                    { id: 'worm', label: '🛡️ Security & WORM Vault', icon: Lock },
-                    { id: 'quorum', label: '🔑 Quorum Approvals', icon: Key, badge: quorumRequests.filter(r => r.status === 'pending').length },
-                    { id: 'sandbox', label: '🧪 SureBackup Sandbox', icon: Cpu },
-                    { id: 'audit', label: '📜 Immutable Audit Trail', icon: FileText }
+                    { id: 'overview', label: 'ภาพรวม & DB Graphs', icon: BarChart3 },
+                    { id: 'settings', label: 'ตั้งค่าการเชื่อมต่อ S3 / Cloud', icon: Settings },
+                    { id: 'jobs', label: 'รายการ Backup & Snapshots', icon: Database },
+                    { id: 'worm', label: 'Security & WORM Vault', icon: Lock },
+                    { id: 'quorum', label: 'Quorum Approvals', icon: Key, badge: quorumRequests.filter(r => r.status === 'pending').length },
+                    { id: 'sandbox', label: 'SureBackup Sandbox', icon: Cpu },
+                    { id: 'audit', label: 'Immutable Audit Trail', icon: FileText }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -502,10 +502,10 @@ export default function AdminBackupPage() {
                                             {/* Hover Tooltip */}
                                             <div className="absolute -top-16 opacity-0 group-hover:opacity-100 transition-opacity bg-black border border-white/20 p-2 rounded-lg text-[10px] text-gray-200 z-20 pointer-events-none whitespace-nowrap shadow-xl">
                                                 <p className="font-bold text-white mb-1">{d.fullDate}</p>
-                                                <p className="text-emerald-400">🟢 Inserts: {d.inserts}</p>
-                                                <p className="text-cyan-400">🔵 Updates: {d.updates}</p>
-                                                <p className="text-red-400">🔴 Deletes: {d.deletes}</p>
-                                                <p className="text-purple-400">🟣 System Logs: {d.systemLogs}</p>
+                                                <p className="text-emerald-400">Inserts: {d.inserts}</p>
+                                                <p className="text-cyan-400">Updates: {d.updates}</p>
+                                                <p className="text-red-400">Deletes: {d.deletes}</p>
+                                                <p className="text-purple-400">System Logs: {d.systemLogs}</p>
                                             </div>
 
                                             <div className="w-full max-w-[40px] bg-white/5 rounded-t-lg flex flex-col justify-end overflow-hidden" style={{ height: `${Math.max(heightPct, 15)}%` }}>
