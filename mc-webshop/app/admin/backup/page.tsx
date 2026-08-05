@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     Database, Shield, Lock, HardDrive, RefreshCw, Cpu, Server, FileText, 
     CheckCircle, Clock, Zap, Activity, Key, Check, Settings, Save,
-    BarChart3, Plus, Layers
+    BarChart3, Layers, TrendingUp, Pause, Play
 } from 'lucide-react';
 import { API_URL } from '../../utils/config';
 import Modal from '../../components/Modal';
@@ -77,6 +77,15 @@ interface DayGraphData {
     systemLogs: number;
 }
 
+interface LiveMetricPoint {
+    time: string;
+    ops: number;
+    reads: number;
+    writes: number;
+    latencyMs: number;
+    memoryMB: number;
+}
+
 interface BackupSettingData {
     provider: 'local' | 'aws_s3' | 'azure_blob' | 'custom_s3';
     awsAccessKeyId: string;
@@ -127,9 +136,23 @@ export default function AdminBackupPage() {
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [quorumRequests, setQuorumRequests] = useState<QuorumRequest[]>([]);
     
+    // Real-time Stock Chart State
+    const [livePoints, setLivePoints] = useState<LiveMetricPoint[]>([]);
+    const [isStreaming, setIsStreaming] = useState(true);
+    const [refreshIntervalSec, setRefreshIntervalSec] = useState(1); // 1s, 2s, 5s, 10s, 30s, 60s
+    const [currentOps, setCurrentOps] = useState(135);
+    const [currentLatency, setCurrentLatency] = useState(14);
+    const [currentReads, setCurrentReads] = useState(101);
+    const [currentWrites, setCurrentWrites] = useState(34);
+    const [peakOps, setPeakOps] = useState(168);
+    const [minOps, setMinOps] = useState(92);
+
     const [triggering, setTriggering] = useState(false);
     const [savingSettings, setSavingSettings] = useState(false);
     const [verifyingJobId, setVerifyingJobId] = useState<string | null>(null);
+
+    const isStreamingRef = useRef(isStreaming);
+    isStreamingRef.current = isStreaming;
 
     // Form state for settings
     const [settingForm, setSettingForm] = useState<BackupSettingData>({
@@ -203,9 +226,61 @@ export default function AdminBackupPage() {
         }
     }, []);
 
+    // Real-time Stock Chart Fetcher
+    const fetchLiveMetric = useCallback(async () => {
+        if (!isStreamingRef.current) return;
+        try {
+            const token = getToken();
+            const res = await fetch(`${API_URL}/api/admin/backup/live-metrics`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const newPoint: LiveMetricPoint = {
+                    time: data.timestamp,
+                    ops: data.ops,
+                    reads: data.reads,
+                    writes: data.writes,
+                    latencyMs: data.latencyMs,
+                    memoryMB: data.memoryMB
+                };
+
+                setCurrentOps(data.ops);
+                setCurrentReads(data.reads);
+                setCurrentWrites(data.writes);
+                setCurrentLatency(data.latencyMs);
+
+                setPeakOps(prev => Math.max(prev, data.ops));
+                setMinOps(prev => Math.min(prev, data.ops));
+
+                setLivePoints(prev => {
+                    const nextArr = [...prev, newPoint];
+                    if (nextArr.length > 30) nextArr.shift(); // Keep last 30 data points
+                    return nextArr;
+                });
+            }
+        } catch {
+            // silent fail
+        }
+    }, []);
+
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Real-time Stock Chart Polling Interval
+    useEffect(() => {
+        // Initial fetch
+        fetchLiveMetric();
+
+        const intervalMs = refreshIntervalSec * 1000;
+        const timer = setInterval(() => {
+            fetchLiveMetric();
+        }, intervalMs);
+
+        return () => clearInterval(timer);
+    }, [fetchLiveMetric, refreshIntervalSec]);
 
     // Save S3 & Storage Settings
     const handleSaveSettings = async (e: React.FormEvent) => {
@@ -317,7 +392,19 @@ export default function AdminBackupPage() {
         }
     };
 
-    // Find max activity count for bar graph scaling
+    // Generate Stock Line Chart SVG Path
+    const chartHeight = 180;
+    const chartWidth = 700;
+    const maxVal = Math.max(...livePoints.map(p => p.ops), peakOps + 10, 160);
+    const minVal = Math.min(...livePoints.map(p => p.ops), minOps - 10, 80);
+    const range = Math.max(maxVal - minVal, 20);
+
+    const svgPoints = livePoints.map((p, idx) => {
+        const x = (idx / Math.max(livePoints.length - 1, 1)) * chartWidth;
+        const y = chartHeight - ((p.ops - minVal) / range) * (chartHeight - 30) - 15;
+        return `${x},${y}`;
+    }).join(' ');
+
     const maxActivity = Math.max(...graphData.map(d => d.inserts + d.updates + d.deletes + d.systemLogs), 10);
 
     return (
@@ -422,7 +509,7 @@ export default function AdminBackupPage() {
                 })}
             </div>
 
-            {/* TAB 1: OVERVIEW & DB GRAPHS */}
+            {/* TAB 1: OVERVIEW & REALTIME STOCK CHART */}
             {activeTab === 'overview' && stats && (
                 <div className="space-y-6">
                     {/* Top System Health Cards */}
@@ -468,6 +555,139 @@ export default function AdminBackupPage() {
                                 <p className="text-xs text-gray-400 font-medium">WORM Immutability Vault</p>
                                 <p className="text-xl font-bold text-white mt-0.5">{stats.immutableWormCount} Locked Jobs</p>
                                 <span className="text-[11px] text-amber-400">Ransomware Shield Active</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Stock-Style Real-time DB Operations Chart */}
+                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
+                        {/* Chart Control Header */}
+                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-4">
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <TrendingUp className="w-5 h-5 text-[var(--primary)]" />
+                                        Real-Time Database Operations Stream (Stock Ticker Chart)
+                                    </h3>
+                                    {isStreaming ? (
+                                        <span className="flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse">
+                                            <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> LIVE STREAMING
+                                        </span>
+                                    ) : (
+                                        <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                                            STREAM PAUSED
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">กราฟแสดงอัตราการประมวลผลข้อมูล Real-Time Operations/sec (OPS), Reads/Writes และ Latency แบบเรียลไทม์</p>
+                            </div>
+
+                            {/* Interval & Stream Controls */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-gray-400 font-semibold mr-1">ความถี่ Real-Time:</span>
+                                {[
+                                    { sec: 1, label: '1s' },
+                                    { sec: 2, label: '2s' },
+                                    { sec: 5, label: '5s' },
+                                    { sec: 10, label: '10s' },
+                                    { sec: 30, label: '30s' },
+                                    { sec: 60, label: '60s' }
+                                ].map(item => (
+                                    <button
+                                        key={item.sec}
+                                        onClick={() => setRefreshIntervalSec(item.sec)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                            refreshIntervalSec === item.sec
+                                                ? 'bg-[var(--primary)] text-black font-extrabold shadow'
+                                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                                        }`}
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
+
+                                <button
+                                    onClick={() => setIsStreaming(!isStreaming)}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ml-2 ${
+                                        isStreaming
+                                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                                    }`}
+                                >
+                                    {isStreaming ? <><Pause className="w-3.5 h-3.5" /> พักสตรีม</> : <><Play className="w-3.5 h-3.5" /> เล่นสตรีม</>}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Stock Ticker Banner Metrics */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#121212] p-4 rounded-xl border border-white/5 font-mono text-xs">
+                            <div>
+                                <p className="text-gray-500 text-[10px]">CURRENT OPS (Ops/Sec)</p>
+                                <p className="text-xl font-extrabold text-[var(--primary)]">{currentOps} OPS</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-500 text-[10px]">READ / WRITE RATIO</p>
+                                <p className="text-sm font-bold text-cyan-400">{currentReads} R / {currentWrites} W</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-500 text-[10px]">PEAK / MIN OPS</p>
+                                <p className="text-sm font-bold text-purple-400">Peak {peakOps} / Min {minOps}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-500 text-[10px]">RESPONSE LATENCY</p>
+                                <p className="text-sm font-bold text-amber-400">{currentLatency} ms</p>
+                            </div>
+                        </div>
+
+                        {/* Stock Line Chart Render */}
+                        <div className="pt-2">
+                            <div className="bg-[#121212] border border-white/5 rounded-2xl p-4 relative overflow-hidden">
+                                {svgPoints.length > 0 ? (
+                                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-48 overflow-visible">
+                                        <defs>
+                                            <linearGradient id="opsGradient" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
+                                                <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
+                                            </linearGradient>
+                                        </defs>
+
+                                        {/* Horizontal Grid lines */}
+                                        <line x1="0" y1="30" x2={chartWidth} y2="30" stroke="#ffffff10" strokeDasharray="3 3" />
+                                        <line x1="0" y1="90" x2={chartWidth} y2="90" stroke="#ffffff10" strokeDasharray="3 3" />
+                                        <line x1="0" y1="150" x2={chartWidth} y2="150" stroke="#ffffff10" strokeDasharray="3 3" />
+
+                                        {/* Filled Area Gradient */}
+                                        <polygon
+                                            points={`0,${chartHeight} ${svgPoints} ${chartWidth},${chartHeight}`}
+                                            fill="url(#opsGradient)"
+                                        />
+
+                                        {/* Smooth Stock Line */}
+                                        <polyline
+                                            fill="none"
+                                            stroke="var(--primary)"
+                                            strokeWidth="2.5"
+                                            points={svgPoints}
+                                        />
+
+                                        {/* Pulsing Dot at latest point */}
+                                        {livePoints.length > 0 && (() => {
+                                            const lastPt = livePoints[livePoints.length - 1];
+                                            const x = chartWidth;
+                                            const y = chartHeight - ((lastPt.ops - minVal) / range) * (chartHeight - 30) - 15;
+                                            return (
+                                                <g>
+                                                    <circle cx={x} cy={y} r="5" fill="var(--primary)" className="animate-ping opacity-75" />
+                                                    <circle cx={x} cy={y} r="4" fill="#55ff55" />
+                                                </g>
+                                            );
+                                        })()}
+                                    </svg>
+                                ) : (
+                                    <div className="h-48 flex items-center justify-center text-gray-500 text-sm">
+                                        กำลังโหลดข้อมูลสตรีม Real-Time...
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

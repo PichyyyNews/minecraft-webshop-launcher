@@ -9,7 +9,8 @@ const {
     getAuditLogs,
     getQuorumRequests,
     approveQuorumRequest,
-    runSandboxTest
+    runSandboxTest,
+    getLiveMetrics
 } = require('../controllers/backupController');
 
 // All backup routes require authentication & admin/root access
@@ -24,5 +25,6 @@ router.get('/audit-logs', getAuditLogs);
 router.get('/quorum', getQuorumRequests);
 router.post('/quorum/approve', approveQuorumRequest);
 router.post('/verify-sandbox', runSandboxTest);
+router.get('/live-metrics', getLiveMetrics);
 
 module.exports = router;
