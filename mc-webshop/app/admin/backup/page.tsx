@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
     Database, Shield, Lock, HardDrive, RefreshCw, Cpu, Server, FileText, 
-    CheckCircle, AlertTriangle, Clock, Zap, ArrowDown, Activity, Key, Eye, Check, AlertCircle, Layers
+    CheckCircle, Clock, Zap, Activity, Key, Check, Settings, Save,
+    BarChart3, Plus, Layers
 } from 'lucide-react';
 import { API_URL } from '../../utils/config';
 import Modal from '../../components/Modal';
@@ -36,6 +37,8 @@ interface BackupStats {
     rpoStatus: string;
     rtoStatus: string;
     deduplicationRatio: string;
+    totalCollectionsCount: number;
+    totalDocumentsCount: number;
     totalBackupSizeGB: string;
     spaceSavedGB: string;
     storageTiering: {
@@ -56,6 +59,35 @@ interface BackupStats {
     totalJobsCount: number;
     immutableWormCount: number;
     cdpStatus: string;
+}
+
+interface CollectionStat {
+    name: string;
+    count: number;
+    sizeKB: string;
+    sizeMB: string;
+}
+
+interface DayGraphData {
+    date: string;
+    fullDate: string;
+    inserts: number;
+    updates: number;
+    deletes: number;
+    systemLogs: number;
+}
+
+interface BackupSettingData {
+    provider: 'local' | 'aws_s3' | 'azure_blob' | 'custom_s3';
+    awsAccessKeyId: string;
+    awsSecretAccessKey: string;
+    awsRegion: string;
+    s3BucketName: string;
+    wormRetentionDays: number;
+    localBackupDirectory: string;
+    isConfigured: boolean;
+    updatedBy: string;
+    updatedAt: string;
 }
 
 interface AuditLog {
@@ -85,14 +117,33 @@ interface QuorumRequest {
 }
 
 export default function AdminBackupPage() {
-    const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'worm' | 'quorum' | 'sandbox' | 'audit'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'jobs' | 'worm' | 'quorum' | 'sandbox' | 'audit'>('overview');
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<BackupStats | null>(null);
+    const [collections, setCollections] = useState<CollectionStat[]>([]);
+    const [graphData, setGraphData] = useState<DayGraphData[]>([]);
+    const [settings, setSettings] = useState<BackupSettingData | null>(null);
     const [jobs, setJobs] = useState<BackupJob[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [quorumRequests, setQuorumRequests] = useState<QuorumRequest[]>([]);
+    
     const [triggering, setTriggering] = useState(false);
+    const [savingSettings, setSavingSettings] = useState(false);
     const [verifyingJobId, setVerifyingJobId] = useState<string | null>(null);
+
+    // Form state for settings
+    const [settingForm, setSettingForm] = useState<BackupSettingData>({
+        provider: 'aws_s3',
+        awsAccessKeyId: '',
+        awsSecretAccessKey: '',
+        awsRegion: 'ap-southeast-1',
+        s3BucketName: '',
+        wormRetentionDays: 30,
+        localBackupDirectory: './backups',
+        isConfigured: false,
+        updatedBy: '',
+        updatedAt: ''
+    });
 
     // Modal
     const [modalProps, setModalProps] = useState({
@@ -111,7 +162,7 @@ export default function AdminBackupPage() {
     const closeModal = () => setModalProps(prev => ({ ...prev, isOpen: false }));
     const getToken = () => localStorage.getItem('adminToken');
 
-    // Fetch Backup Stats & Jobs
+    // Fetch Dashboard Stats & DB Info
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -127,20 +178,26 @@ export default function AdminBackupPage() {
             if (resStats.ok) {
                 const dataStats = await resStats.json();
                 setStats(dataStats.stats);
-                setJobs(dataStats.jobs);
+                setCollections(dataStats.collectionsStats || []);
+                setGraphData(dataStats.daysGraph || []);
+                setJobs(dataStats.jobs || []);
+                if (dataStats.settings) {
+                    setSettings(dataStats.settings);
+                    setSettingForm(dataStats.settings);
+                }
             }
 
             if (resLogs.ok) {
                 const dataLogs = await resLogs.json();
-                setAuditLogs(dataLogs.logs);
+                setAuditLogs(dataLogs.logs || []);
             }
 
             if (resQuorum.ok) {
                 const dataQuorum = await resQuorum.json();
-                setQuorumRequests(dataQuorum.requests);
+                setQuorumRequests(dataQuorum.requests || []);
             }
         } catch (error) {
-            console.error('Failed to load backup dashboard data:', error);
+            console.error('Failed to load backup data:', error);
         } finally {
             setLoading(false);
         }
@@ -150,7 +207,37 @@ export default function AdminBackupPage() {
         fetchData();
     }, [fetchData]);
 
-    // Trigger Instant Snapshot / Backup
+    // Save S3 & Storage Settings
+    const handleSaveSettings = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSavingSettings(true);
+        try {
+            const res = await fetch(`${API_URL}/api/admin/backup/settings`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${getToken()}`
+                },
+                body: JSON.stringify(settingForm)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                showModal('บันทึกสำเร็จ', data.message || 'บันทึกการตั้งค่าการเชื่อมต่อเรียบร้อยแล้ว', 'success');
+                setSettings(data.settings);
+                fetchData();
+            } else {
+                const err = await res.json();
+                showModal('ข้อผิดพลาด', err.message || 'ไม่สามารถบันทึกการตั้งค่าได้', 'error');
+            }
+        } catch {
+            showModal('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+        } finally {
+            setSavingSettings(false);
+        }
+    };
+
+    // Trigger Instant Snapshot
     const handleTriggerBackup = async (type: string, consistency: string) => {
         setTriggering(true);
         try {
@@ -206,7 +293,7 @@ export default function AdminBackupPage() {
         }
     };
 
-    // Run SureBackup Sandbox Verification
+    // Run SureBackup Sandbox Test
     const handleVerifySandbox = async (jobId: string) => {
         setVerifyingJobId(jobId);
         try {
@@ -230,6 +317,9 @@ export default function AdminBackupPage() {
         }
     };
 
+    // Find max activity count for bar graph scaling
+    const maxActivity = Math.max(...graphData.map(d => d.inserts + d.updates + d.deletes + d.systemLogs), 10);
+
     return (
         <div className="p-6 max-w-7xl mx-auto text-white space-y-6">
             {/* Header Banner */}
@@ -242,18 +332,18 @@ export default function AdminBackupPage() {
                                 <Shield className="w-6 h-6 text-[var(--primary)]" />
                             </div>
                             <h1 className="text-2xl lg:text-3xl font-extrabold text-white">
-                                Enterprise Backup & DR Engine
+                                Enterprise Backup & DR Control Center
                             </h1>
                             <span className="bg-red-500/20 text-red-400 border border-red-500/40 text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
-                                <Key className="w-3.5 h-3.5" /> Root Permission Protected
+                                <Key className="w-3.5 h-3.5" /> Root Access Only
                             </span>
                         </div>
                         <p className="text-gray-400 text-sm">
-                            ระบบสำรองข้อมูลระดับองค์กร ป้องกัน Ransomware ด้วย WORM Immutability, GFS Rotation, 3-2-1 Rule และ Immutable Audit Trail
+                            ศูนย์ควบคุมและกู้คืนระบบฐานข้อมูล ป้องกัน Ransomware ด้วย WORM Immutability, GFS Rotation, 3-2-1 Rule และ Real-Time Audit Log
                         </p>
                     </div>
 
-                    {/* Quick Trigger Actions */}
+                    {/* Actions */}
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
@@ -273,32 +363,40 @@ export default function AdminBackupPage() {
                     </div>
                 </div>
 
-                {/* Sub-Header Security Badges */}
-                <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap gap-4 text-xs font-semibold text-gray-300">
-                    <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-lg border border-emerald-500/20">
-                        <CheckCircle className="w-4 h-4" /> WORM Immutability Vault Active
+                {/* Sub Header Configuration Notice */}
+                <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs">
+                    <div className="flex flex-wrap items-center gap-3">
+                        {settings?.isConfigured ? (
+                            <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-bold">
+                                <CheckCircle className="w-4 h-4" /> Cloud Storage Configured ({settings.s3BucketName})
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg font-bold">
+                                <Settings className="w-4 h-4" /> Cloud Storage (AWS S3) Not Configured - Using Local Backup Mode
+                            </span>
+                        )}
+                        <span className="text-gray-400">โหมดจัดเก็บ: <strong className="text-white uppercase">{settings?.provider || 'local'}</strong></span>
                     </div>
-                    <div className="flex items-center gap-1.5 bg-cyan-500/10 text-cyan-400 px-3 py-1.5 rounded-lg border border-cyan-500/20">
-                        <Layers className="w-4 h-4" /> 3-2-1 Rule Compliant (Multi-Destination)
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-purple-500/10 text-purple-400 px-3 py-1.5 rounded-lg border border-purple-500/20">
-                        <Activity className="w-4 h-4" /> Near-CDP Journaling Active
-                    </div>
-                    <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 px-3 py-1.5 rounded-lg border border-amber-500/20">
-                        <Lock className="w-4 h-4" /> Quorum Authorization Active (2+ Admins)
-                    </div>
+
+                    <button
+                        onClick={() => setActiveTab('settings')}
+                        className="text-[var(--primary)] hover:underline font-semibold flex items-center gap-1"
+                    >
+                        <Settings className="w-3.5 h-3.5" /> ตั้งค่าการเชื่อมต่อ S3 / Storage Provider ➔
+                    </button>
                 </div>
             </div>
 
             {/* Tab Navigation */}
             <div className="flex gap-2 border-b border-white/10 overflow-x-auto pb-2">
                 {[
-                    { id: 'overview', label: 'ภาพรวม & Metrics', icon: Activity },
-                    { id: 'jobs', label: 'รายการ Backup & Snapshots', icon: Database },
-                    { id: 'worm', label: 'Security & WORM Vault', icon: Lock },
-                    { id: 'quorum', label: 'Quorum Approvals', icon: Key, badge: quorumRequests.filter(r => r.status === 'pending').length },
-                    { id: 'sandbox', label: 'SureBackup Sandbox', icon: Cpu },
-                    { id: 'audit', label: 'Immutable Audit Trail', icon: FileText }
+                    { id: 'overview', label: '📊 ภาพรวม & DB Graphs', icon: BarChart3 },
+                    { id: 'settings', label: '⚙️ ตั้งค่าการเชื่อมต่อ S3 / Cloud', icon: Settings },
+                    { id: 'jobs', label: '📸 รายการ Backup & Snapshots', icon: Database },
+                    { id: 'worm', label: '🛡️ Security & WORM Vault', icon: Lock },
+                    { id: 'quorum', label: '🔑 Quorum Approvals', icon: Key, badge: quorumRequests.filter(r => r.status === 'pending').length },
+                    { id: 'sandbox', label: '🧪 SureBackup Sandbox', icon: Cpu },
+                    { id: 'audit', label: '📜 Immutable Audit Trail', icon: FileText }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -324,30 +422,30 @@ export default function AdminBackupPage() {
                 })}
             </div>
 
-            {/* TAB 1: OVERVIEW & METRICS */}
+            {/* TAB 1: OVERVIEW & DB GRAPHS */}
             {activeTab === 'overview' && stats && (
                 <div className="space-y-6">
-                    {/* Top Key Performance Metrics */}
+                    {/* Top System Health Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-5 shadow-xl flex items-center gap-4">
                             <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <Clock className="w-6 h-6" />
+                                <Database className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">Recovery Point Objective (RPO)</p>
-                                <p className="text-xl font-bold text-white mt-0.5">{stats.rpoStatus}</p>
-                                <span className="text-[11px] text-emerald-400">Near-CDP Streaming</span>
+                                <p className="text-xs text-gray-400 font-medium">MongoDB Collections</p>
+                                <p className="text-xl font-bold text-white mt-0.5">{stats.totalCollectionsCount} Collections</p>
+                                <span className="text-[11px] text-emerald-400">รวม {stats.totalDocumentsCount.toLocaleString()} เอกสาร (Documents)</span>
                             </div>
                         </div>
 
                         <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-5 shadow-xl flex items-center gap-4">
                             <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                                <Zap className="w-6 h-6" />
+                                <Clock className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">Recovery Time Objective (RTO)</p>
-                                <p className="text-xl font-bold text-white mt-0.5">{stats.rtoStatus}</p>
-                                <span className="text-[11px] text-cyan-400">Instant VM Mount</span>
+                                <p className="text-xs text-gray-400 font-medium">Recovery Point Objective (RPO)</p>
+                                <p className="text-xl font-bold text-white mt-0.5">{stats.rpoStatus}</p>
+                                <span className="text-[11px] text-cyan-400">Near-CDP Journal Stream</span>
                             </div>
                         </div>
 
@@ -356,7 +454,7 @@ export default function AdminBackupPage() {
                                 <Layers className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">Deduplication & Compression</p>
+                                <p className="text-xs text-gray-400 font-medium">Deduplication Ratio</p>
                                 <p className="text-xl font-bold text-purple-300 mt-0.5">{stats.deduplicationRatio}</p>
                                 <span className="text-[11px] text-purple-400">ประหยัดพื้นที่ {stats.spaceSavedGB} GB</span>
                             </div>
@@ -367,109 +465,224 @@ export default function AdminBackupPage() {
                                 <Shield className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">WORM Immutability Protection</p>
+                                <p className="text-xs text-gray-400 font-medium">WORM Immutability Vault</p>
                                 <p className="text-xl font-bold text-white mt-0.5">{stats.immutableWormCount} Locked Jobs</p>
                                 <span className="text-[11px] text-amber-400">Ransomware Shield Active</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Storage Tiering & 3-2-1 Rule Breakdown */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Storage Tiering */}
-                        <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                                <h3 className="text-base font-bold flex items-center gap-2">
-                                    <HardDrive className="w-5 h-5 text-[var(--primary)]" />
-                                    Multi-Destination Storage Tiering
+                    {/* Daily Database Activity Bar Graph */}
+                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                            <div>
+                                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                    <BarChart3 className="w-5 h-5 text-[var(--primary)]" />
+                                    กราฟกิจกรรมข้อมูลย้อนหลัง 7 วัน (Daily Database Operations & Logs)
                                 </h3>
-                                <span className="text-xs text-gray-400">รวม {stats.totalBackupSizeGB} GB</span>
+                                <p className="text-xs text-gray-400">แสดงปริมาณการเพิ่ม (Inserts), แก้ไข (Updates), ลบ (Deletes) และ Audit System Logs ที่เกิดขึ้นจริงในระบบ</p>
                             </div>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <div className="flex justify-between text-xs mb-1 font-medium">
-                                        <span className="text-emerald-400">🔥 Hot Tier (NVMe Primary Storage)</span>
-                                        <span className="text-gray-300">{stats.storageTiering.hotNvmeGB} GB</span>
-                                    </div>
-                                    <div className="h-2.5 bg-white/10 rounded-full overflow-hidden">
-                                        <div className="h-full bg-emerald-500 w-[40%]" />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className="flex justify-between text-xs mb-1 font-medium">
-                                        <span className="text-cyan-400">⚡ Warm Tier (Local NAS / SAN Repository)</span>
-                                        <span className="text-gray-300">{stats.storageTiering.warmNasGB} GB</span>
-                                    </div>
-                                    <div className="h-2.5 bg-white/10 rounded-full overflow-hidden">
-                                        <div className="h-full bg-cyan-500 w-[45%]" />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className="flex justify-between text-xs mb-1 font-medium">
-                                        <span className="text-purple-400">🧊 Cold Tier (AWS S3 Glacier WORM Vault)</span>
-                                        <span className="text-gray-300">{stats.storageTiering.coldWormArchiveGB} GB</span>
-                                    </div>
-                                    <div className="h-2.5 bg-white/10 rounded-full overflow-hidden">
-                                        <div className="h-full bg-purple-500 w-[15%]" />
-                                    </div>
-                                </div>
+                            <div className="flex items-center gap-4 text-xs font-semibold">
+                                <span className="flex items-center gap-1 text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> Inserts</span>
+                                <span className="flex items-center gap-1 text-cyan-400"><div className="w-3 h-3 bg-cyan-500 rounded-sm" /> Updates</span>
+                                <span className="flex items-center gap-1 text-red-400"><div className="w-3 h-3 bg-red-500 rounded-sm" /> Deletes</span>
+                                <span className="flex items-center gap-1 text-purple-400"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Audit Logs</span>
                             </div>
                         </div>
 
-                        {/* 3-2-1 Rule & GFS Rotation Policy */}
-                        <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                                <h3 className="text-base font-bold flex items-center gap-2">
-                                    <CheckCircle className="w-5 h-5 text-emerald-400" />
-                                    3-2-1 Backup Framework & GFS Model
-                                </h3>
-                                <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full font-bold">
-                                    100% Compliant
-                                </span>
-                            </div>
+                        {/* Interactive Visual Bar Chart */}
+                        <div className="pt-4 pb-2">
+                            <div className="h-48 flex items-end justify-between gap-2 border-b border-white/10 pb-2 px-2">
+                                {graphData.map((d, index) => {
+                                    const total = d.inserts + d.updates + d.deletes + d.systemLogs;
+                                    const heightPct = Math.min(Math.round((total / maxActivity) * 100), 100);
 
-                            <div className="grid grid-cols-3 gap-3 text-center">
-                                <div className="p-3 bg-white/5 rounded-xl border border-white/5">
-                                    <p className="text-2xl font-extrabold text-[var(--primary)]">3</p>
-                                    <p className="text-xs text-gray-400 mt-1">Data Copies</p>
-                                    <p className="text-[10px] text-emerald-400 mt-0.5">Primary + 2 Backups</p>
-                                </div>
-                                <div className="p-3 bg-white/5 rounded-xl border border-white/5">
-                                    <p className="text-2xl font-extrabold text-cyan-400">2</p>
-                                    <p className="text-xs text-gray-400 mt-1">Different Media</p>
-                                    <p className="text-[10px] text-cyan-400 mt-0.5">NVMe + S3 WORM</p>
-                                </div>
-                                <div className="p-3 bg-white/5 rounded-xl border border-white/5">
-                                    <p className="text-2xl font-extrabold text-purple-400">1</p>
-                                    <p className="text-xs text-gray-400 mt-1">Offsite Cloud</p>
-                                    <p className="text-[10px] text-purple-400 mt-0.5">Air-Gapped Vault</p>
-                                </div>
-                            </div>
+                                    return (
+                                        <div key={index} className="flex-1 flex flex-col items-center gap-2 group relative">
+                                            {/* Hover Tooltip */}
+                                            <div className="absolute -top-16 opacity-0 group-hover:opacity-100 transition-opacity bg-black border border-white/20 p-2 rounded-lg text-[10px] text-gray-200 z-20 pointer-events-none whitespace-nowrap shadow-xl">
+                                                <p className="font-bold text-white mb-1">{d.fullDate}</p>
+                                                <p className="text-emerald-400">🟢 Inserts: {d.inserts}</p>
+                                                <p className="text-cyan-400">🔵 Updates: {d.updates}</p>
+                                                <p className="text-red-400">🔴 Deletes: {d.deletes}</p>
+                                                <p className="text-purple-400">🟣 System Logs: {d.systemLogs}</p>
+                                            </div>
 
-                            <div className="pt-2 border-t border-white/10 text-xs text-gray-300 space-y-2">
-                                <p className="font-semibold text-white">GFS Rotation Policy Configuration:</p>
-                                <div className="flex justify-between bg-white/5 p-2 rounded-lg">
-                                    <span>Son (Daily Backups):</span>
-                                    <span className="font-bold text-[var(--primary)]">เก็บ 14 วัน</span>
-                                </div>
-                                <div className="flex justify-between bg-white/5 p-2 rounded-lg">
-                                    <span>Father (Weekly Synthetic Full):</span>
-                                    <span className="font-bold text-cyan-400">เก็บ 8 สัปดาห์</span>
-                                </div>
-                                <div className="flex justify-between bg-white/5 p-2 rounded-lg">
-                                    <span>Grandfather (Monthly Archive):</span>
-                                    <span className="font-bold text-purple-400">เก็บ 7 ปี (WORM Compliance)</span>
-                                </div>
+                                            <div className="w-full max-w-[40px] bg-white/5 rounded-t-lg flex flex-col justify-end overflow-hidden" style={{ height: `${Math.max(heightPct, 15)}%` }}>
+                                                <div style={{ height: `${(d.inserts / total) * 100}%` }} className="bg-emerald-500 w-full" />
+                                                <div style={{ height: `${(d.updates / total) * 100}%` }} className="bg-cyan-500 w-full" />
+                                                <div style={{ height: `${(d.deletes / total) * 100}%` }} className="bg-red-500 w-full" />
+                                                <div style={{ height: `${(d.systemLogs / total) * 100}%` }} className="bg-purple-500 w-full" />
+                                            </div>
+                                            <span className="text-[11px] text-gray-400 font-medium">{d.date}</span>
+                                        </div>
+                                    );
+                                })}
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Real MongoDB Collection Breakdown Table */}
+                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                            <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                <Database className="w-5 h-5 text-[var(--primary)]" />
+                                ข้อมูลขนาดตารางในระบบ MongoDB ที่เปิดใช้อยู่จริง (Database Collections Breakdown)
+                            </h3>
+                            <span className="text-xs text-gray-400">สำรวจจาก Database 127.0.0.1 (webshopmc)</span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm text-gray-300">
+                                <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
+                                    <tr>
+                                        <th className="px-4 py-3">ชื่อ Collection ในระบบ MongoDB</th>
+                                        <th className="px-4 py-3">จำนวนเอกสาร (Documents)</th>
+                                        <th className="px-4 py-3">ขนาดข้อมูล (Estimated Size KB)</th>
+                                        <th className="px-4 py-3 text-right">ขนาดข้อมูล (MB)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5 font-mono text-xs">
+                                    {collections.map((col, idx) => (
+                                        <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                            <td className="px-4 py-3 font-bold text-white flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-[var(--primary)]" />
+                                                {col.name}
+                                            </td>
+                                            <td className="px-4 py-3 text-emerald-400 font-bold">
+                                                {col.count.toLocaleString()} รายการ
+                                            </td>
+                                            <td className="px-4 py-3 text-gray-300">
+                                                {col.sizeKB} KB
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-bold text-purple-400">
+                                                {col.sizeMB} MB
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* TAB 2: JOBS & SNAPSHOTS */}
+            {/* TAB 2: SETTINGS (AWS S3 & STORAGE PROVIDER) */}
+            {activeTab === 'settings' && (
+                <form onSubmit={handleSaveSettings} className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6 max-w-4xl mx-auto">
+                    <div className="border-b border-white/10 pb-4">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <Settings className="w-6 h-6 text-[var(--primary)]" />
+                            ตั้งค่าการเชื่อมต่อ S3 / Cloud Storage Provider จริง
+                        </h3>
+                        <p className="text-xs text-gray-400 mt-1">
+                            กรอกข้อมูลบัญชี AWS S3 / Cloud Provider ของคุณ เพื่อให้ระบบอัปโหลดไฟล์สำรองข้อมูลไปยัง Cloud Vault จริง
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                        {/* Storage Provider Selection */}
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-semibold text-gray-300 mb-2">เลือกประเภทผู้ให้บริการ Storage (Storage Provider)</label>
+                            <select
+                                value={settingForm.provider}
+                                onChange={(e) => setSettingForm({ ...settingForm, provider: e.target.value as typeof settingForm.provider })}
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                            >
+                                <option value="aws_s3">Amazon Web Services (AWS S3 Glacier WORM Vault)</option>
+                                <option value="custom_s3">Custom MinIO / S3 Compatible Object Storage</option>
+                                <option value="azure_blob">Microsoft Azure Blob Storage</option>
+                                <option value="local">Local Server Storage Only (เก็บเฉพาะในดิสก์เครื่อง)</option>
+                            </select>
+                        </div>
+
+                        {/* AWS Access Key ID */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Access Key ID</label>
+                            <input
+                                type="text"
+                                value={settingForm.awsAccessKeyId}
+                                onChange={(e) => setSettingForm({ ...settingForm, awsAccessKeyId: e.target.value })}
+                                placeholder="AKIAIOSFODNN7EXAMPLE"
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                            />
+                        </div>
+
+                        {/* AWS Secret Access Key */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Secret Access Key</label>
+                            <input
+                                type="password"
+                                value={settingForm.awsSecretAccessKey}
+                                onChange={(e) => setSettingForm({ ...settingForm, awsSecretAccessKey: e.target.value })}
+                                placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                            />
+                        </div>
+
+                        {/* AWS Region */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Region</label>
+                            <input
+                                type="text"
+                                value={settingForm.awsRegion}
+                                onChange={(e) => setSettingForm({ ...settingForm, awsRegion: e.target.value })}
+                                placeholder="ap-southeast-1 (Singapore)"
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                            />
+                        </div>
+
+                        {/* S3 Bucket Name */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS S3 Bucket Name</label>
+                            <input
+                                type="text"
+                                value={settingForm.s3BucketName}
+                                onChange={(e) => setSettingForm({ ...settingForm, s3BucketName: e.target.value })}
+                                placeholder="mcwebshop-backup-vault-prod"
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                            />
+                        </div>
+
+                        {/* WORM Lock Retention Days */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-300 mb-1">WORM Lock Duration (จำนวนวันที่ล็อกห้ามลบ)</label>
+                            <input
+                                type="number"
+                                value={settingForm.wormRetentionDays}
+                                onChange={(e) => setSettingForm({ ...settingForm, wormRetentionDays: parseInt(e.target.value) || 30 })}
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                min={1}
+                            />
+                        </div>
+
+                        {/* Local Backup Path */}
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-300 mb-1">Local Backup Folder Path (โฟลเดอร์เก็บสำรองในเครื่อง)</label>
+                            <input
+                                type="text"
+                                value={settingForm.localBackupDirectory}
+                                onChange={(e) => setSettingForm({ ...settingForm, localBackupDirectory: e.target.value })}
+                                placeholder="./backups"
+                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/10 flex justify-end">
+                        <button
+                            type="submit"
+                            disabled={savingSettings}
+                            className="px-6 py-3 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 text-sm disabled:opacity-50"
+                        >
+                            <Save className="w-4 h-4" />
+                            {savingSettings ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า S3 & Storage'}
+                        </button>
+                    </div>
+                </form>
+            )}
+
+            {/* TAB 3: JOBS & SNAPSHOTS */}
             {activeTab === 'jobs' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
@@ -484,13 +697,6 @@ export default function AdminBackupPage() {
                                 className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                             >
                                 <Zap className="w-3.5 h-3.5" /> App-Consistent Snapshot
-                            </button>
-                            <button
-                                onClick={() => handleTriggerBackup('synthetic_full', 'app_consistent')}
-                                disabled={triggering}
-                                className="px-3.5 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
-                            >
-                                <Layers className="w-3.5 h-3.5" /> Synthetic Full
                             </button>
                         </div>
                     </div>
@@ -535,11 +741,7 @@ export default function AdminBackupPage() {
                                             <p className="text-[11px] text-purple-400">{job.dedupRatio}x Deduplicated</p>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                                                job.storageTier === 'cold_worm_archive' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
-                                                job.storageTier === 'warm_nas' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
-                                                'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                            }`}>
+                                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                                                 {job.storageTier.toUpperCase()}
                                             </span>
                                         </td>
@@ -583,7 +785,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 3: WORM SECURITY & AIR-GAP */}
+            {/* TAB 4: WORM SECURITY & AIR-GAP */}
             {activeTab === 'worm' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
@@ -628,7 +830,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 4: QUORUM APPROVALS */}
+            {/* TAB 5: QUORUM APPROVALS */}
             {activeTab === 'quorum' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex justify-between items-center border-b border-white/10 pb-4">
@@ -676,7 +878,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 5: SUREBACKUP SANDBOX */}
+            {/* TAB 6: SUREBACKUP SANDBOX */}
             {activeTab === 'sandbox' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -708,7 +910,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 6: IMMUTABLE AUDIT TRAIL */}
+            {/* TAB 7: IMMUTABLE AUDIT TRAIL */}
             {activeTab === 'audit' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex justify-between items-center border-b border-white/10 pb-4">
