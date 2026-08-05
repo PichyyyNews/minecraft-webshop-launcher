@@ -659,7 +659,6 @@ export default function ShopPage() {
                             ))}
                         </div>
                     )}
-                </main>
 
                 {/* ── Product Description Modal Popup ───────────────────────── */}
                 {detailProduct && (
