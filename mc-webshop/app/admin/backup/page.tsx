@@ -125,6 +125,24 @@ interface QuorumRequest {
     createdAt: string;
 }
 
+// Smooth Cubic Bezier Helper for Professional TradingView-Grade Line Smoothing
+function generateSmoothPath(points: { x: number; y: number }[]): string {
+    if (points.length === 0) return '';
+    if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
+
+    let path = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
+    for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i];
+        const p1 = points[i + 1];
+        const cp1x = p0.x + (p1.x - p0.x) / 2;
+        const cp1y = p0.y;
+        const cp2x = p0.x + (p1.x - p0.x) / 2;
+        const cp2y = p1.y;
+        path += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p1.x.toFixed(1)},${p1.y.toFixed(1)}`;
+    }
+    return path;
+}
+
 export default function AdminBackupPage() {
     const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'jobs' | 'worm' | 'quorum' | 'sandbox' | 'audit'>('overview');
     const [loading, setLoading] = useState(true);
@@ -139,13 +157,14 @@ export default function AdminBackupPage() {
     // Real-time Stock Chart State
     const [livePoints, setLivePoints] = useState<LiveMetricPoint[]>([]);
     const [isStreaming, setIsStreaming] = useState(true);
-    const [refreshIntervalSec, setRefreshIntervalSec] = useState(1); // 1s, 2s, 5s, 10s, 30s, 60s
+    const [refreshIntervalSec, setRefreshIntervalSec] = useState(1);
     const [currentOps, setCurrentOps] = useState(135);
     const [currentLatency, setCurrentLatency] = useState(14);
     const [currentReads, setCurrentReads] = useState(101);
     const [currentWrites, setCurrentWrites] = useState(34);
     const [peakOps, setPeakOps] = useState(168);
     const [minOps, setMinOps] = useState(92);
+    const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
 
     const [triggering, setTriggering] = useState(false);
     const [savingSettings, setSavingSettings] = useState(false);
@@ -153,6 +172,8 @@ export default function AdminBackupPage() {
 
     const isStreamingRef = useRef(isStreaming);
     isStreamingRef.current = isStreaming;
+
+    const svgContainerRef = useRef<SVGSVGElement | null>(null);
 
     // Form state for settings
     const [settingForm, setSettingForm] = useState<BackupSettingData>({
@@ -256,7 +277,7 @@ export default function AdminBackupPage() {
 
                 setLivePoints(prev => {
                     const nextArr = [...prev, newPoint];
-                    if (nextArr.length > 30) nextArr.shift(); // Keep last 30 data points
+                    if (nextArr.length > 40) nextArr.shift(); // Keep last 40 data points
                     return nextArr;
                 });
             }
@@ -271,9 +292,7 @@ export default function AdminBackupPage() {
 
     // Real-time Stock Chart Polling Interval
     useEffect(() => {
-        // Initial fetch
         fetchLiveMetric();
-
         const intervalMs = refreshIntervalSec * 1000;
         const timer = setInterval(() => {
             fetchLiveMetric();
@@ -392,20 +411,41 @@ export default function AdminBackupPage() {
         }
     };
 
-    // Generate Stock Line Chart SVG Path
-    const chartHeight = 180;
-    const chartWidth = 700;
-    const maxVal = Math.max(...livePoints.map(p => p.ops), peakOps + 10, 160);
-    const minVal = Math.min(...livePoints.map(p => p.ops), minOps - 10, 80);
+    // Handle Mouse move for interactive chart crosshair
+    const handleChartMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+        if (!svgContainerRef.current || livePoints.length === 0) return;
+        const rect = svgContainerRef.current.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const width = rect.width;
+        
+        const idx = Math.min(
+            Math.max(Math.round((mouseX / width) * (livePoints.length - 1)), 0),
+            livePoints.length - 1
+        );
+        setHoveredPointIndex(idx);
+    };
+
+    // TradingView-Grade Stock Line Chart Coordinate Mapping
+    const chartHeight = 220;
+    const chartWidth = 800;
+    const maxVal = Math.max(...livePoints.map(p => p.ops), peakOps + 10, 180);
+    const minVal = Math.min(...livePoints.map(p => p.ops), minOps - 10, 70);
     const range = Math.max(maxVal - minVal, 20);
 
-    const svgPoints = livePoints.map((p, idx) => {
+    const coords = livePoints.map((p, idx) => {
         const x = (idx / Math.max(livePoints.length - 1, 1)) * chartWidth;
-        const y = chartHeight - ((p.ops - minVal) / range) * (chartHeight - 30) - 15;
-        return `${x},${y}`;
-    }).join(' ');
+        const y = chartHeight - ((p.ops - minVal) / range) * (chartHeight - 40) - 20;
+        return { x, y, point: p };
+    });
+
+    const smoothLineD = generateSmoothPath(coords);
+    const fillAreaD = coords.length > 0
+        ? `${smoothLineD} L ${coords[coords.length - 1].x},${chartHeight} L ${coords[0].x},${chartHeight} Z`
+        : '';
 
     const maxActivity = Math.max(...graphData.map(d => d.inserts + d.updates + d.deletes + d.systemLogs), 10);
+
+    const activeHoverPoint = hoveredPointIndex !== null && coords[hoveredPointIndex] ? coords[hoveredPointIndex] : null;
 
     return (
         <div className="p-6 max-w-7xl mx-auto text-white space-y-6">
@@ -509,7 +549,7 @@ export default function AdminBackupPage() {
                 })}
             </div>
 
-            {/* TAB 1: OVERVIEW & REALTIME STOCK CHART */}
+            {/* TAB 1: OVERVIEW & TRADINGVIEW-GRADE REALTIME STOCK CHART */}
             {activeTab === 'overview' && stats && (
                 <div className="space-y-6">
                     {/* Top System Health Cards */}
@@ -559,7 +599,7 @@ export default function AdminBackupPage() {
                         </div>
                     </div>
 
-                    {/* Stock-Style Real-time DB Operations Chart */}
+                    {/* TradingView-Grade Financial Real-time DB Chart */}
                     <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                         {/* Chart Control Header */}
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-4">
@@ -567,7 +607,7 @@ export default function AdminBackupPage() {
                                 <div className="flex items-center gap-3">
                                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                                         <TrendingUp className="w-5 h-5 text-[var(--primary)]" />
-                                        Real-Time Database Operations Stream (Stock Ticker Chart)
+                                        TradingView-Grade Real-Time DB Operations Stream
                                     </h3>
                                     {isStreaming ? (
                                         <span className="flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse">
@@ -579,7 +619,7 @@ export default function AdminBackupPage() {
                                         </span>
                                     )}
                                 </div>
-                                <p className="text-xs text-gray-400 mt-1">กราฟแสดงอัตราการประมวลผลข้อมูล Real-Time Operations/sec (OPS), Reads/Writes และ Latency แบบเรียลไทม์</p>
+                                <p className="text-xs text-gray-400 mt-1">กราฟวิเคราะห์ปริมาณการอ่านเขียนข้อมูล (OPS), Response Latency และ Memory Usage พร้อม Crosshair Inspect</p>
                             </div>
 
                             {/* Interval & Stream Controls */}
@@ -623,11 +663,11 @@ export default function AdminBackupPage() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#121212] p-4 rounded-xl border border-white/5 font-mono text-xs">
                             <div>
                                 <p className="text-gray-500 text-[10px]">CURRENT OPS (Ops/Sec)</p>
-                                <p className="text-xl font-extrabold text-[var(--primary)]">{currentOps} OPS</p>
+                                <p className="text-2xl font-extrabold text-[var(--primary)]">{currentOps} <span className="text-xs text-gray-400">OPS</span></p>
                             </div>
                             <div>
                                 <p className="text-gray-500 text-[10px]">READ / WRITE RATIO</p>
-                                <p className="text-sm font-bold text-cyan-400">{currentReads} R / {currentWrites} W</p>
+                                <p className="text-sm font-bold text-cyan-400">{currentReads} Read / {currentWrites} Write</p>
                             </div>
                             <div>
                                 <p className="text-gray-500 text-[10px]">PEAK / MIN OPS</p>
@@ -639,105 +679,123 @@ export default function AdminBackupPage() {
                             </div>
                         </div>
 
-                        {/* Stock Line Chart Render */}
+                        {/* High-Definition Interactive Smooth Chart Render */}
                         <div className="pt-2">
                             <div className="bg-[#121212] border border-white/5 rounded-2xl p-4 relative overflow-hidden">
-                                {svgPoints.length > 0 ? (
-                                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-48 overflow-visible">
-                                        <defs>
-                                            <linearGradient id="opsGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
-                                                <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
-                                            </linearGradient>
-                                        </defs>
+                                {coords.length > 0 ? (
+                                    <div className="relative">
+                                        <svg
+                                            ref={svgContainerRef}
+                                            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                                            onMouseMove={handleChartMouseMove}
+                                            onMouseLeave={() => setHoveredPointIndex(null)}
+                                            className="w-full h-56 overflow-visible cursor-crosshair"
+                                        >
+                                            <defs>
+                                                <linearGradient id="tradingViewGradient" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.4" />
+                                                    <stop offset="50%" stopColor="var(--primary)" stopOpacity="0.1" />
+                                                    <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
+                                                </linearGradient>
+                                                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                                                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                                    <feMerge>
+                                                        <feMergeNode in="coloredBlur"/>
+                                                        <feMergeNode in="SourceGraphic"/>
+                                                    </feMerge>
+                                                </filter>
+                                            </defs>
 
-                                        {/* Horizontal Grid lines */}
-                                        <line x1="0" y1="30" x2={chartWidth} y2="30" stroke="#ffffff10" strokeDasharray="3 3" />
-                                        <line x1="0" y1="90" x2={chartWidth} y2="90" stroke="#ffffff10" strokeDasharray="3 3" />
-                                        <line x1="0" y1="150" x2={chartWidth} y2="150" stroke="#ffffff10" strokeDasharray="3 3" />
+                                            {/* Horizontal Grid lines with Y-Axis Values */}
+                                            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+                                                const val = Math.round(maxVal - ratio * range);
+                                                const y = chartHeight * ratio;
+                                                return (
+                                                    <g key={i}>
+                                                        <line x1="0" y1={y} x2={chartWidth} y2={y} stroke="#ffffff08" strokeDasharray="4 4" />
+                                                        <text x="5" y={y - 4} fill="#666" fontSize="10" fontFamily="monospace">
+                                                            {val} OPS
+                                                        </text>
+                                                    </g>
+                                                );
+                                            })}
 
-                                        {/* Filled Area Gradient */}
-                                        <polygon
-                                            points={`0,${chartHeight} ${svgPoints} ${chartWidth},${chartHeight}`}
-                                            fill="url(#opsGradient)"
-                                        />
+                                            {/* Smooth Cubic Bezier Area Fill */}
+                                            {fillAreaD && (
+                                                <path d={fillAreaD} fill="url(#tradingViewGradient)" />
+                                            )}
 
-                                        {/* Smooth Stock Line */}
-                                        <polyline
-                                            fill="none"
-                                            stroke="var(--primary)"
-                                            strokeWidth="2.5"
-                                            points={svgPoints}
-                                        />
+                                            {/* Smooth Cubic Bezier Main Line with Glow */}
+                                            {smoothLineD && (
+                                                <path
+                                                    d={smoothLineD}
+                                                    fill="none"
+                                                    stroke="var(--primary)"
+                                                    strokeWidth="3"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    filter="url(#glow)"
+                                                />
+                                            )}
 
-                                        {/* Pulsing Dot at latest point */}
-                                        {livePoints.length > 0 && (() => {
-                                            const lastPt = livePoints[livePoints.length - 1];
-                                            const x = chartWidth;
-                                            const y = chartHeight - ((lastPt.ops - minVal) / range) * (chartHeight - 30) - 15;
-                                            return (
+                                            {/* Active Hover Crosshair Line */}
+                                            {activeHoverPoint && (
                                                 <g>
-                                                    <circle cx={x} cy={y} r="5" fill="var(--primary)" className="animate-ping opacity-75" />
-                                                    <circle cx={x} cy={y} r="4" fill="#55ff55" />
+                                                    <line
+                                                        x1={activeHoverPoint.x}
+                                                        y1="0"
+                                                        x2={activeHoverPoint.x}
+                                                        y2={chartHeight}
+                                                        stroke="var(--primary)"
+                                                        strokeWidth="1.5"
+                                                        strokeDasharray="4 4"
+                                                    />
+                                                    <circle
+                                                        cx={activeHoverPoint.x}
+                                                        cy={activeHoverPoint.y}
+                                                        r="6"
+                                                        fill="#55ff55"
+                                                        stroke="#000"
+                                                        strokeWidth="2"
+                                                    />
                                                 </g>
-                                            );
-                                        })()}
-                                    </svg>
+                                            )}
+
+                                            {/* Live Pulsing Dot at latest point when not hovering */}
+                                            {!activeHoverPoint && coords.length > 0 && (() => {
+                                                const lastPt = coords[coords.length - 1];
+                                                return (
+                                                    <g>
+                                                        <circle cx={lastPt.x} cy={lastPt.y} r="6" fill="var(--primary)" className="animate-ping opacity-75" />
+                                                        <circle cx={lastPt.x} cy={lastPt.y} r="4" fill="#55ff55" />
+                                                    </g>
+                                                );
+                                            })()}
+                                        </svg>
+
+                                        {/* Dynamic Crosshair Inspection Tooltip Card */}
+                                        {activeHoverPoint && (
+                                            <div
+                                                className="absolute top-2 bg-black/90 border border-[var(--primary)]/40 p-3 rounded-xl shadow-2xl text-xs space-y-1 font-mono pointer-events-none backdrop-blur-md z-30"
+                                                style={{
+                                                    left: Math.min(Math.max(activeHoverPoint.x - 60, 10), chartWidth - 180)
+                                                }}
+                                            >
+                                                <p className="font-bold text-white border-b border-white/10 pb-1 mb-1">
+                                                    เวลา: {activeHoverPoint.point.time}
+                                                </p>
+                                                <p className="text-[var(--primary)] font-bold">OPS: {activeHoverPoint.point.ops} ops/sec</p>
+                                                <p className="text-cyan-400">Reads: {activeHoverPoint.point.reads} / Writes: {activeHoverPoint.point.writes}</p>
+                                                <p className="text-amber-400">Latency: {activeHoverPoint.point.latencyMs} ms</p>
+                                                <p className="text-purple-400">Memory: {activeHoverPoint.point.memoryMB} MB</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 ) : (
-                                    <div className="h-48 flex items-center justify-center text-gray-500 text-sm">
-                                        กำลังโหลดข้อมูลสตรีม Real-Time...
+                                    <div className="h-56 flex items-center justify-center text-gray-500 text-sm">
+                                        กำลังเชื่อมต่อข้อมูลสตรีม Real-Time...
                                     </div>
                                 )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Daily Database Activity Bar Graph */}
-                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                        <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                            <div>
-                                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                                    <BarChart3 className="w-5 h-5 text-[var(--primary)]" />
-                                    กราฟกิจกรรมข้อมูลย้อนหลัง 7 วัน (Daily Database Operations & Logs)
-                                </h3>
-                                <p className="text-xs text-gray-400">แสดงปริมาณการเพิ่ม (Inserts), แก้ไข (Updates), ลบ (Deletes) และ Audit System Logs ที่เกิดขึ้นจริงในระบบ</p>
-                            </div>
-                            <div className="flex items-center gap-4 text-xs font-semibold">
-                                <span className="flex items-center gap-1 text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> Inserts</span>
-                                <span className="flex items-center gap-1 text-cyan-400"><div className="w-3 h-3 bg-cyan-500 rounded-sm" /> Updates</span>
-                                <span className="flex items-center gap-1 text-red-400"><div className="w-3 h-3 bg-red-500 rounded-sm" /> Deletes</span>
-                                <span className="flex items-center gap-1 text-purple-400"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Audit Logs</span>
-                            </div>
-                        </div>
-
-                        {/* Interactive Visual Bar Chart */}
-                        <div className="pt-4 pb-2">
-                            <div className="h-48 flex items-end justify-between gap-2 border-b border-white/10 pb-2 px-2">
-                                {graphData.map((d, index) => {
-                                    const total = d.inserts + d.updates + d.deletes + d.systemLogs;
-                                    const heightPct = Math.min(Math.round((total / maxActivity) * 100), 100);
-
-                                    return (
-                                        <div key={index} className="flex-1 flex flex-col items-center gap-2 group relative">
-                                            {/* Hover Tooltip */}
-                                            <div className="absolute -top-16 opacity-0 group-hover:opacity-100 transition-opacity bg-black border border-white/20 p-2 rounded-lg text-[10px] text-gray-200 z-20 pointer-events-none whitespace-nowrap shadow-xl">
-                                                <p className="font-bold text-white mb-1">{d.fullDate}</p>
-                                                <p className="text-emerald-400">Inserts: {d.inserts}</p>
-                                                <p className="text-cyan-400">Updates: {d.updates}</p>
-                                                <p className="text-red-400">Deletes: {d.deletes}</p>
-                                                <p className="text-purple-400">System Logs: {d.systemLogs}</p>
-                                            </div>
-
-                                            <div className="w-full max-w-[40px] bg-white/5 rounded-t-lg flex flex-col justify-end overflow-hidden" style={{ height: `${Math.max(heightPct, 15)}%` }}>
-                                                <div style={{ height: `${(d.inserts / total) * 100}%` }} className="bg-emerald-500 w-full" />
-                                                <div style={{ height: `${(d.updates / total) * 100}%` }} className="bg-cyan-500 w-full" />
-                                                <div style={{ height: `${(d.deletes / total) * 100}%` }} className="bg-red-500 w-full" />
-                                                <div style={{ height: `${(d.systemLogs / total) * 100}%` }} className="bg-purple-500 w-full" />
-                                            </div>
-                                            <span className="text-[11px] text-gray-400 font-medium">{d.date}</span>
-                                        </div>
-                                    );
-                                })}
                             </div>
                         </div>
                     </div>
