@@ -31,6 +31,18 @@ const ProductSchema = new mongoose.Schema({
         type: String,
         default: 'General'
     },
+    subcategory: {
+        type: String,
+        default: ''
+    },
+    isHide: {
+        type: Boolean,
+        default: false
+    },
+    sortOrder: {
+        type: Number,
+        default: 0
+    },
     command: {
         type: String,
         default: ''

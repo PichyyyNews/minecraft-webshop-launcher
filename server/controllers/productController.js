@@ -7,7 +7,8 @@ const fs = require('fs');
 // @access  Public
 const getProducts = async (req, res) => {
     try {
-        const products = await Product.find({}).sort({ createdAt: -1 });
+        const filter = req.query.admin === 'true' ? {} : { isHide: { $ne: true } };
+        const products = await Product.find(filter).sort({ sortOrder: 1, createdAt: -1 });
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });
@@ -19,7 +20,7 @@ const getProducts = async (req, res) => {
 // @access  Public
 const getFeaturedProducts = async (req, res) => {
     try {
-        const products = await Product.find({}).sort({ createdAt: -1 }).limit(5);
+        const products = await Product.find({ isHide: { $ne: true } }).sort({ sortOrder: 1, createdAt: -1 }).limit(5);
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });
@@ -31,7 +32,7 @@ const getFeaturedProducts = async (req, res) => {
 // @access  Admin
 const createProduct = async (req, res) => {
     try {
-        const { name, description, price, category, tag, tagColor, command, allowGift, displayType, modelSettings, blockTextures, gltfModel } = req.body;
+        const { name, description, price, category, subcategory, isHide, sortOrder, tag, tagColor, command, allowGift, displayType, modelSettings, blockTextures, gltfModel } = req.body;
         let imageUrl = '';
 
         if (req.body.image) {
@@ -66,6 +67,9 @@ const createProduct = async (req, res) => {
             description,
             price,
             category,
+            subcategory: subcategory || '',
+            isHide: isHide === 'true' || isHide === true,
+            sortOrder: sortOrder !== undefined ? parseInt(sortOrder) || 0 : 0,
             imageUrl,
             tag,
             tagColor,
@@ -90,14 +94,21 @@ const createProduct = async (req, res) => {
 // @access  Admin
 const updateProduct = async (req, res) => {
     try {
-        const { name, description, price, category, tag, tagColor, command, allowGift, displayType, modelSettings, blockTextures, gltfModel } = req.body;
+        const { name, description, price, category, subcategory, isHide, sortOrder, tag, tagColor, command, allowGift, displayType, modelSettings, blockTextures, gltfModel } = req.body;
         const product = await Product.findById(req.params.id);
 
         if (product) {
-            product.name = name || product.name;
-            product.description = description || product.description;
-            product.price = price || product.price;
-            product.category = category || product.category;
+            product.name = name !== undefined ? name : product.name;
+            product.description = description !== undefined ? description : product.description;
+            product.price = price !== undefined ? price : product.price;
+            product.category = category !== undefined ? category : product.category;
+            product.subcategory = subcategory !== undefined ? subcategory : product.subcategory;
+            if (isHide !== undefined) {
+                product.isHide = isHide === 'true' || isHide === true;
+            }
+            if (sortOrder !== undefined) {
+                product.sortOrder = parseInt(sortOrder) || 0;
+            }
             product.tag = tag !== undefined ? tag : product.tag;
             product.tagColor = tagColor || product.tagColor;
             product.command = command !== undefined ? command : product.command;

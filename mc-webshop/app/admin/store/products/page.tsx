@@ -12,6 +12,9 @@ interface Product {
     description: string;
     price: number;
     category: string;
+    subcategory?: string;
+    isHide?: boolean;
+    sortOrder?: number;
     imageUrl?: string;
     tag?: string;
     tagColor?: string;
@@ -50,6 +53,9 @@ export default function AdminProductsPage() {
         description: '',
         price: '',
         category: 'General',
+        subcategory: '',
+        isHide: false,
+        sortOrder: '0',
         tag: '',
         tagColor: '#ff0000',
         command: '',
@@ -148,13 +154,49 @@ export default function AdminProductsPage() {
 
     const fetchProducts = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/products`);
+            const res = await fetch(`${API_URL}/api/products?admin=true`);
             const data = await res.json();
             setProducts(data);
             setLoading(false);
         } catch (error) {
             console.error('Error fetching products:', error);
             setLoading(false);
+        }
+    };
+
+    const handleToggleHide = async (product: Product) => {
+        try {
+            const res = await fetch(`${API_URL}/api/products/${product._id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('adminToken') || localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ isHide: !product.isHide }),
+            });
+            if (res.ok) {
+                fetchProducts();
+            }
+        } catch (error) {
+            console.error('Error toggling product hide status:', error);
+        }
+    };
+
+    const handleUpdateOrder = async (product: Product, newOrder: number) => {
+        try {
+            const res = await fetch(`${API_URL}/api/products/${product._id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('adminToken') || localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ sortOrder: newOrder }),
+            });
+            if (res.ok) {
+                fetchProducts();
+            }
+        } catch (error) {
+            console.error('Error updating product order:', error);
         }
     };
 
@@ -166,6 +208,9 @@ export default function AdminProductsPage() {
                 description: product.description,
                 price: product.price.toString(),
                 category: product.category,
+                subcategory: product.subcategory || '',
+                isHide: product.isHide || false,
+                sortOrder: (product.sortOrder !== undefined ? product.sortOrder : 0).toString(),
                 tag: product.tag || '',
                 tagColor: product.tagColor || '#ff0000',
                 command: product.command || '',
@@ -190,8 +235,6 @@ export default function AdminProductsPage() {
                 gltfModel: product.gltfModel || ''
             });
             setPreviewUrl(product.imageUrl || null);
-            // We don't preview GLTF file content here directly in formData as it's a path, 
-            // but we can set it to formData to show existing status
             setFormData(prev => ({ ...prev, gltfModel: product.gltfModel || '' }));
         } else {
             setEditingProduct(null);
@@ -200,6 +243,9 @@ export default function AdminProductsPage() {
                 description: '',
                 price: '',
                 category: 'General',
+                subcategory: '',
+                isHide: false,
+                sortOrder: '0',
                 tag: '',
                 tagColor: '#ff0000',
                 command: '',
@@ -253,6 +299,9 @@ export default function AdminProductsPage() {
         data.append('description', formData.description);
         data.append('price', formData.price);
         data.append('category', formData.category);
+        data.append('subcategory', formData.subcategory);
+        data.append('isHide', String(formData.isHide));
+        data.append('sortOrder', formData.sortOrder);
         data.append('tag', formData.tag);
         data.append('tagColor', formData.tagColor);
         data.append('command', formData.command);
@@ -376,9 +425,11 @@ export default function AdminProductsPage() {
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-[#2a2a2a] text-gray-400 text-sm uppercase tracking-wider">
+                                <th className="p-4 font-medium w-20 text-center">ลำดับ</th>
                                 <th className="p-6 font-medium">{t('admin.products.image')}</th>
                                 <th className="p-6 font-medium">{t('admin.products.name')}</th>
                                 <th className="p-6 font-medium">{t('admin.products.category')}</th>
+                                <th className="p-6 font-medium">สถานะ</th>
                                 <th className="p-6 font-medium">{t('admin.products.price')}</th>
                                 <th className="p-6 font-medium text-right">{t('admin.products.actions')}</th>
                             </tr>
@@ -386,13 +437,13 @@ export default function AdminProductsPage() {
                         <tbody className="divide-y divide-white/5">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">
                                         {t('common.loading')}
                                     </td>
                                 </tr>
                             ) : products.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-gray-500">
+                                    <td colSpan={7} className="p-8 text-center text-gray-500">
                                         {t('shop.outOfStock')}
                                     </td>
                                 </tr>
@@ -401,10 +452,21 @@ export default function AdminProductsPage() {
                                     .filter(product =>
                                         product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                         product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                        product.category.toLowerCase().includes(searchQuery.toLowerCase())
+                                        product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                        (product.subcategory && product.subcategory.toLowerCase().includes(searchQuery.toLowerCase()))
                                     )
                                     .map((product) => (
                                         <tr key={product._id} className="hover:bg-white/5 transition-colors group">
+                                            <td className="p-4 text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <input
+                                                        type="number"
+                                                        value={product.sortOrder !== undefined ? product.sortOrder : 0}
+                                                        onChange={(e) => handleUpdateOrder(product, parseInt(e.target.value) || 0)}
+                                                        className="w-14 bg-[#121212] border border-white/10 text-center rounded px-1 py-1 text-sm text-white font-mono outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                                                    />
+                                                </div>
+                                            </td>
                                             <td className="p-6">
                                                 <div className="w-12 h-12 bg-[#121212] rounded-lg overflow-hidden flex items-center justify-center border border-white/10">
                                                     <ImageWithSkeleton src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
@@ -415,9 +477,32 @@ export default function AdminProductsPage() {
                                                 <div className="text-sm text-gray-500 truncate max-w-xs">{product.description}</div>
                                             </td>
                                             <td className="p-6 text-gray-400">
-                                                <span className="px-3 py-1 bg-white/5 rounded-full text-xs">
-                                                    {product.category}
-                                                </span>
+                                                <div className="flex flex-col gap-1 items-start">
+                                                    <span className="px-3 py-1 bg-white/5 rounded-full text-xs">
+                                                        {product.category}
+                                                    </span>
+                                                    {product.subcategory && (
+                                                        <span className="px-2.5 py-0.5 bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/20 rounded-full text-[11px]">
+                                                            {product.subcategory}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-6">
+                                                <button
+                                                    onClick={() => handleToggleHide(product)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                                                        product.isHide
+                                                            ? 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
+                                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
+                                                    }`}
+                                                >
+                                                    {product.isHide ? (
+                                                        <>🙈 ซ่อนอยู่</>
+                                                    ) : (
+                                                        <>👁️ แสดงอยู่</>
+                                                    )}
+                                                </button>
                                             </td>
                                             <td className="p-6 text-[var(--primary)] font-bold">{product.price.toLocaleString()}</td>
                                             <td className="p-6 text-right">
@@ -508,6 +593,28 @@ export default function AdminProductsPage() {
                                     </select>
                                 </div>
                             </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">หมวดหมู่ย่อย (Subcategory)</label>
+                                    <input
+                                        type="text"
+                                        value={formData.subcategory}
+                                        onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                        className="w-full bg-[#121212] border border-white/10 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
+                                        placeholder="เช่น ดาบ, เกราะ, ไอเทมพิเศษ"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-1">ลำดับการแสดงผล (Sort Order)</label>
+                                    <input
+                                        type="number"
+                                        value={formData.sortOrder}
+                                        onChange={(e) => setFormData({ ...formData, sortOrder: e.target.value })}
+                                        className="w-full bg-[#121212] border border-white/10 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
+                                        placeholder="0 (น้อยกว่าแสดงก่อน)"
+                                    />
+                                </div>
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-400 mb-1">{t('admin.products.command')} {t('admin.products.optional')}</label>
                                 <input
@@ -520,19 +627,32 @@ export default function AdminProductsPage() {
                                 <p className="text-xs text-gray-500 mt-1">{t('admin.products.commandHint').split('[player]')[0]} <span className="text-[var(--primary)]">[player]</span> {t('admin.products.commandHint').split('[player]')[1]}</p>
                             </div>
 
-                            <div className="flex items-center gap-3 bg-[#121212] border border-white/10 rounded-lg px-4 py-3">
-                                <input
-                                    type="checkbox"
-                                    id="allowGift"
-                                    checked={formData.allowGift}
-                                    onChange={(e) => setFormData({ ...formData, allowGift: e.target.checked })}
-                                    className="w-5 h-5 rounded border-gray-600 text-[var(--primary)] focus:ring-[var(--primary)] bg-[#1e1e1e]"
-                                />
-                                <label htmlFor="allowGift" className="text-sm font-medium text-white cursor-pointer select-none">
-                                    {t('admin.products.allowGift')}
-                                </label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="flex items-center gap-3 bg-[#121212] border border-white/10 rounded-lg px-4 py-3">
+                                    <input
+                                        type="checkbox"
+                                        id="allowGift"
+                                        checked={formData.allowGift}
+                                        onChange={(e) => setFormData({ ...formData, allowGift: e.target.checked })}
+                                        className="w-5 h-5 rounded border-gray-600 text-[var(--primary)] focus:ring-[var(--primary)] bg-[#1e1e1e]"
+                                    />
+                                    <label htmlFor="allowGift" className="text-sm font-medium text-white cursor-pointer select-none">
+                                        {t('admin.products.allowGift')}
+                                    </label>
+                                </div>
+                                <div className="flex items-center gap-3 bg-[#121212] border border-white/10 rounded-lg px-4 py-3">
+                                    <input
+                                        type="checkbox"
+                                        id="isHide"
+                                        checked={formData.isHide}
+                                        onChange={(e) => setFormData({ ...formData, isHide: e.target.checked })}
+                                        className="w-5 h-5 rounded border-gray-600 text-red-500 focus:ring-red-500 bg-[#1e1e1e]"
+                                    />
+                                    <label htmlFor="isHide" className="text-sm font-medium text-red-400 cursor-pointer select-none">
+                                        ซ่อนสินค้าจากหน้าร้าน
+                                    </label>
+                                </div>
                             </div>
-
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
