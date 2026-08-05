@@ -132,6 +132,7 @@ app.use('/api/rcon', require('./routes/rcon'));
 app.use('/api/transactions', require('./routes/transactions'));
 app.use('/api/team', require('./routes/team'));
 app.use('/api/launcher', require('./routes/launcher'));
+app.use('/api/admin/backup', require('./routes/backupRoutes'));
 
 // Auto-Login verify for Minecraft Plugin
 const { verifyJoinToken } = require('./controllers/autologinController');
