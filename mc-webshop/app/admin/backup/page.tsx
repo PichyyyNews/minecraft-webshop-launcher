@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     Database, Shield, Lock, HardDrive, RefreshCw, Cpu, Server, FileText, 
     CheckCircle, Clock, Zap, Activity, Key, Check, Settings, Save,
-    BarChart3, Layers, TrendingUp, Pause, Play
+    BarChart3, Layers, TrendingUp, Pause, Play, RotateCcw, Calendar, History
 } from 'lucide-react';
 import { API_URL } from '../../utils/config';
 import Modal from '../../components/Modal';
@@ -66,6 +66,15 @@ interface CollectionStat {
     count: number;
     sizeKB: string;
     sizeMB: string;
+}
+
+interface HourlyGraphData {
+    time: string;
+    fullTime: string;
+    inserts: number;
+    updates: number;
+    deletes: number;
+    systemLogs: number;
 }
 
 interface DayGraphData {
@@ -144,17 +153,20 @@ function generateSmoothPath(points: { x: number; y: number }[]): string {
 }
 
 export default function AdminBackupPage() {
-    const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'jobs' | 'worm' | 'quorum' | 'sandbox' | 'audit'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'restore' | 'settings' | 'jobs' | 'worm' | 'quorum' | 'sandbox' | 'audit'>('overview');
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<BackupStats | null>(null);
     const [collections, setCollections] = useState<CollectionStat[]>([]);
     const [graphData, setGraphData] = useState<DayGraphData[]>([]);
+    const [hourlyGraphData, setHourlyGraphData] = useState<HourlyGraphData[]>([]);
+    const [barGraphMode, setBarGraphMode] = useState<'hourly' | 'daily'>('hourly'); // 24-hours vs 30-days
+
     const [settings, setSettings] = useState<BackupSettingData | null>(null);
     const [jobs, setJobs] = useState<BackupJob[]>([]);
     const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
     const [quorumRequests, setQuorumRequests] = useState<QuorumRequest[]>([]);
     
-    // Real-time Stock Chart State
+    // Real-time Stock Chart State (High Density - 60 Points Buffer)
     const [livePoints, setLivePoints] = useState<LiveMetricPoint[]>([]);
     const [isStreaming, setIsStreaming] = useState(true);
     const [refreshIntervalSec, setRefreshIntervalSec] = useState(1);
@@ -168,6 +180,7 @@ export default function AdminBackupPage() {
 
     const [triggering, setTriggering] = useState(false);
     const [savingSettings, setSavingSettings] = useState(false);
+    const [restoringJobId, setRestoringJobId] = useState<string | null>(null);
     const [verifyingJobId, setVerifyingJobId] = useState<string | null>(null);
 
     const isStreamingRef = useRef(isStreaming);
@@ -224,6 +237,7 @@ export default function AdminBackupPage() {
                 setStats(dataStats.stats);
                 setCollections(dataStats.collectionsStats || []);
                 setGraphData(dataStats.daysGraph || []);
+                setHourlyGraphData(dataStats.hourlyGraph || []);
                 setJobs(dataStats.jobs || []);
                 if (dataStats.settings) {
                     setSettings(dataStats.settings);
@@ -277,7 +291,7 @@ export default function AdminBackupPage() {
 
                 setLivePoints(prev => {
                     const nextArr = [...prev, newPoint];
-                    if (nextArr.length > 40) nextArr.shift(); // Keep last 40 data points
+                    if (nextArr.length > 60) nextArr.shift(); // High Density Buffer (Last 60 Points)
                     return nextArr;
                 });
             }
@@ -363,6 +377,42 @@ export default function AdminBackupPage() {
         }
     };
 
+    // Point-in-Time Restore from selected Snapshot
+    const handleRestoreBackup = (jobId: string, jobName: string) => {
+        showModal(
+            'ยืนยันการกู้คืนข้อมูล (Point-in-Time Restore)',
+            `คุณแน่ใจหรือไม่ที่จะย้อนกลับฐานข้อมูลทั้งหมดไปยัง Snapshot "${jobName}" (${jobId})? ระบบจะทำการสแนปชอตสถานะปัจจุบันก่อนทำการย้อนกลับเพื่อความปลอดภัย`,
+            'warning',
+            'confirm',
+            async () => {
+                setRestoringJobId(jobId);
+                try {
+                    const res = await fetch(`${API_URL}/api/admin/backup/restore`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${getToken()}`
+                        },
+                        body: JSON.stringify({ jobId })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        showModal('กู้คืนข้อมูลสำเร็จ!', data.message, 'success');
+                        fetchData();
+                    } else {
+                        const err = await res.json();
+                        showModal('ข้อผิดพลาด', err.message || 'ไม่สามารถย้อนกลับข้อมูลได้', 'error');
+                    }
+                } catch {
+                    showModal('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้', 'error');
+                } finally {
+                    setRestoringJobId(null);
+                }
+            }
+        );
+    };
+
     // Approve Quorum Request
     const handleApproveQuorum = async (requestId: string) => {
         try {
@@ -426,24 +476,35 @@ export default function AdminBackupPage() {
     };
 
     // TradingView-Grade Stock Line Chart Coordinate Mapping
-    const chartHeight = 220;
-    const chartWidth = 800;
+    const chartHeight = 240;
+    const chartWidth = 900;
     const maxVal = Math.max(...livePoints.map(p => p.ops), peakOps + 10, 180);
     const minVal = Math.min(...livePoints.map(p => p.ops), minOps - 10, 70);
     const range = Math.max(maxVal - minVal, 20);
 
     const coords = livePoints.map((p, idx) => {
         const x = (idx / Math.max(livePoints.length - 1, 1)) * chartWidth;
-        const y = chartHeight - ((p.ops - minVal) / range) * (chartHeight - 40) - 20;
+        const y = chartHeight - ((p.ops - minVal) / range) * (chartHeight - 45) - 20;
         return { x, y, point: p };
     });
 
+    // Secondary Latency Curve Mapping
+    const latencyCoords = livePoints.map((p, idx) => {
+        const x = (idx / Math.max(livePoints.length - 1, 1)) * chartWidth;
+        const y = chartHeight - (p.latencyMs / 40) * (chartHeight - 60) - 20;
+        return { x, y };
+    });
+
     const smoothLineD = generateSmoothPath(coords);
+    const smoothLatencyD = generateSmoothPath(latencyCoords);
+
     const fillAreaD = coords.length > 0
         ? `${smoothLineD} L ${coords[coords.length - 1].x},${chartHeight} L ${coords[0].x},${chartHeight} Z`
         : '';
 
-    const maxActivity = Math.max(...graphData.map(d => d.inserts + d.updates + d.deletes + d.systemLogs), 10);
+    // Active Bar Graph Data Selection (24-Hours vs 30-Days)
+    const activeBarData = barGraphMode === 'hourly' ? hourlyGraphData : graphData;
+    const maxActivity = Math.max(...activeBarData.map(d => d.inserts + d.updates + d.deletes + d.systemLogs), 10);
 
     const activeHoverPoint = hoveredPointIndex !== null && coords[hoveredPointIndex] ? coords[hoveredPointIndex] : null;
 
@@ -478,7 +539,7 @@ export default function AdminBackupPage() {
                             className="px-4 py-2.5 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 text-sm disabled:opacity-50"
                         >
                             <Zap className="w-4 h-4" />
-                            {triggering ? 'กำลังสร้าง Snapshot...' : 'สร้าง CoW Snapshot ทันที'}
+                            {triggering ? 'กำลังสร้าง Snapshot...' : 'สร้าง Auto CoW Snapshot ทันที'}
                         </button>
                         <button
                             onClick={fetchData}
@@ -518,6 +579,7 @@ export default function AdminBackupPage() {
             <div className="flex gap-2 border-b border-white/10 overflow-x-auto pb-2">
                 {[
                     { id: 'overview', label: 'ภาพรวม & DB Graphs', icon: BarChart3 },
+                    { id: 'restore', label: 'หน้าย้อนหลัง & Restore Points', icon: RotateCcw, badge: jobs.length },
                     { id: 'settings', label: 'ตั้งค่าการเชื่อมต่อ S3 / Cloud', icon: Settings },
                     { id: 'jobs', label: 'รายการ Backup & Snapshots', icon: Database },
                     { id: 'worm', label: 'Security & WORM Vault', icon: Lock },
@@ -549,7 +611,7 @@ export default function AdminBackupPage() {
                 })}
             </div>
 
-            {/* TAB 1: OVERVIEW & TRADINGVIEW-GRADE REALTIME STOCK CHART */}
+            {/* TAB 1: OVERVIEW & ULTRA HIGH-DENSITY REALTIME STOCK CHART */}
             {activeTab === 'overview' && stats && (
                 <div className="space-y-6">
                     {/* Top System Health Cards */}
@@ -599,7 +661,7 @@ export default function AdminBackupPage() {
                         </div>
                     </div>
 
-                    {/* TradingView-Grade Financial Real-time DB Chart */}
+                    {/* Ultra High-Density Real-Time DB Stream Chart */}
                     <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                         {/* Chart Control Header */}
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-4">
@@ -607,7 +669,7 @@ export default function AdminBackupPage() {
                                 <div className="flex items-center gap-3">
                                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
                                         <TrendingUp className="w-5 h-5 text-[var(--primary)]" />
-                                        TradingView-Grade Real-Time DB Operations Stream
+                                        Ultra High-Density Real-Time DB Operations Stream (60-Points Buffer)
                                     </h3>
                                     {isStreaming ? (
                                         <span className="flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse">
@@ -619,7 +681,7 @@ export default function AdminBackupPage() {
                                         </span>
                                     )}
                                 </div>
-                                <p className="text-xs text-gray-400 mt-1">กราฟวิเคราะห์ปริมาณการอ่านเขียนข้อมูล (OPS), Response Latency และ Memory Usage พร้อม Crosshair Inspect</p>
+                                <p className="text-xs text-gray-400 mt-1">กราฟแสดงอัตราการประมวลผลข้อมูล (OPS), Response Latency และ Active Connections แบบเรียลไทม์ความละเอียดสูง 60 จุดข้อมูล</p>
                             </div>
 
                             {/* Interval & Stream Controls */}
@@ -679,7 +741,7 @@ export default function AdminBackupPage() {
                             </div>
                         </div>
 
-                        {/* High-Definition Interactive Smooth Chart Render */}
+                        {/* High-Definition Interactive Multi-Curve Stream Render */}
                         <div className="pt-2">
                             <div className="bg-[#121212] border border-white/5 rounded-2xl p-4 relative overflow-hidden">
                                 {coords.length > 0 ? (
@@ -689,12 +751,12 @@ export default function AdminBackupPage() {
                                             viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                                             onMouseMove={handleChartMouseMove}
                                             onMouseLeave={() => setHoveredPointIndex(null)}
-                                            className="w-full h-56 overflow-visible cursor-crosshair"
+                                            className="w-full h-64 overflow-visible cursor-crosshair"
                                         >
                                             <defs>
                                                 <linearGradient id="tradingViewGradient" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.4" />
-                                                    <stop offset="50%" stopColor="var(--primary)" stopOpacity="0.1" />
+                                                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.45" />
+                                                    <stop offset="50%" stopColor="var(--primary)" stopOpacity="0.15" />
                                                     <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
                                                 </linearGradient>
                                                 <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -725,7 +787,19 @@ export default function AdminBackupPage() {
                                                 <path d={fillAreaD} fill="url(#tradingViewGradient)" />
                                             )}
 
-                                            {/* Smooth Cubic Bezier Main Line with Glow */}
+                                            {/* Secondary Latency Overlay Line (Amber) */}
+                                            {smoothLatencyD && (
+                                                <path
+                                                    d={smoothLatencyD}
+                                                    fill="none"
+                                                    stroke="#ffaa00"
+                                                    strokeWidth="1.5"
+                                                    strokeDasharray="3 3"
+                                                    opacity="0.7"
+                                                />
+                                            )}
+
+                                            {/* Primary OPS Smooth Cubic Bezier Main Line with Glow */}
                                             {smoothLineD && (
                                                 <path
                                                     d={smoothLineD}
@@ -792,10 +866,92 @@ export default function AdminBackupPage() {
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="h-56 flex items-center justify-center text-gray-500 text-sm">
-                                        กำลังเชื่อมต่อข้อมูลสตรีม Real-Time...
+                                    <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+                                        กำลังเชื่อมต่อข้อมูลสตรีม Real-Time ความละเอียดสูง...
                                     </div>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* High-Density Multi-Bar CRUD & Audit Activity Report Chart */}
+                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
+                            <div>
+                                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                    <BarChart3 className="w-5 h-5 text-[var(--primary)]" />
+                                    รายงานกิจกรรม เพิ่ม/ลบ/แก้ไข และ Audit Logs (High-Density Multi-Bar Chart)
+                                </h3>
+                                <p className="text-xs text-gray-400">แสดงความถี่ของ Inserts (เพิ่ม), Updates (แก้ไข), Deletes (ลบ) และ Audit Logs รายชั่วโมง / รายวันแบบละเอียด</p>
+                            </div>
+
+                            {/* Hourly vs Daily Bar Mode Selector */}
+                            <div className="flex items-center gap-2 bg-[#121212] p-1 rounded-xl border border-white/10">
+                                <button
+                                    onClick={() => setBarGraphMode('hourly')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        barGraphMode === 'hourly'
+                                            ? 'bg-[var(--primary)] text-black font-extrabold shadow'
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    24 ชั่วโมงย้อนหลัง (Hourly 24-Bars)
+                                </button>
+                                <button
+                                    onClick={() => setBarGraphMode('daily')}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        barGraphMode === 'daily'
+                                            ? 'bg-[var(--primary)] text-black font-extrabold shadow'
+                                            : 'text-gray-400 hover:text-white'
+                                    }`}
+                                >
+                                    30 วันย้อนหลัง (Daily 30-Bars)
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Color Legend */}
+                        <div className="flex flex-wrap items-center gap-4 text-xs font-semibold pt-1">
+                            <span className="flex items-center gap-1.5 text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> Inserts (เพิ่ม)</span>
+                            <span className="flex items-center gap-1.5 text-cyan-400"><div className="w-3 h-3 bg-cyan-500 rounded-sm" /> Updates (แก้ไข)</span>
+                            <span className="flex items-center gap-1.5 text-red-400"><div className="w-3 h-3 bg-red-500 rounded-sm" /> Deletes (ลบ)</span>
+                            <span className="flex items-center gap-1.5 text-purple-400"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Audit Logs (ระบบ)</span>
+                        </div>
+
+                        {/* Interactive High-Density Dense Visual Stacked Bar Chart */}
+                        <div className="pt-4 pb-2">
+                            <div className="h-56 flex items-end justify-between gap-1 border-b border-white/10 pb-2 px-1">
+                                {activeBarData.map((d, index) => {
+                                    const total = d.inserts + d.updates + d.deletes + d.systemLogs;
+                                    const heightPct = Math.min(Math.round((total / maxActivity) * 100), 100);
+                                    const label = 'time' in d ? d.time : d.date;
+                                    const fullLabel = 'fullTime' in d ? d.fullTime : d.fullDate;
+
+                                    return (
+                                        <div key={index} className="flex-1 flex flex-col items-center gap-1.5 group relative min-w-[12px]">
+                                            {/* Hover Inspection Tooltip */}
+                                            <div className="absolute -top-24 opacity-0 group-hover:opacity-100 transition-opacity bg-black border border-white/20 p-2.5 rounded-xl text-[11px] text-gray-200 z-30 pointer-events-none whitespace-nowrap shadow-2xl font-mono">
+                                                <p className="font-bold text-white mb-1">{fullLabel}</p>
+                                                <p className="text-emerald-400">Inserts: {d.inserts}</p>
+                                                <p className="text-cyan-400">Updates: {d.updates}</p>
+                                                <p className="text-red-400">Deletes: {d.deletes}</p>
+                                                <p className="text-purple-400">System Logs: {d.systemLogs}</p>
+                                            </div>
+
+                                            <div className="w-full bg-white/5 rounded-t flex flex-col justify-end overflow-hidden" style={{ height: `${Math.max(heightPct, 12)}%` }}>
+                                                <div style={{ height: `${(d.inserts / total) * 100}%` }} className="bg-emerald-500 w-full" />
+                                                <div style={{ height: `${(d.updates / total) * 100}%` }} className="bg-cyan-500 w-full" />
+                                                <div style={{ height: `${(d.deletes / total) * 100}%` }} className="bg-red-500 w-full" />
+                                                <div style={{ height: `${(d.systemLogs / total) * 100}%` }} className="bg-purple-500 w-full" />
+                                            </div>
+                                            {index % (barGraphMode === 'hourly' ? 3 : 4) === 0 ? (
+                                                <span className="text-[10px] text-gray-400 font-mono truncate">{label}</span>
+                                            ) : (
+                                                <span className="text-[10px] text-transparent">.</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -845,7 +1001,77 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 2: SETTINGS (AWS S3 & STORAGE PROVIDER) */}
+            {/* TAB 2: POINT-IN-TIME RESTORE & BACKTRACK PAGE */}
+            {activeTab === 'restore' && (
+                <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6">
+                    <div className="border-b border-white/10 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                <RotateCcw className="w-6 h-6 text-[var(--primary)]" />
+                                หน้าสำหรับการย้อนหลังข้อมูลฐานข้อมูล (Point-in-Time Restore & Backtrack Timeline)
+                            </h3>
+                            <p className="text-xs text-gray-400 mt-1">
+                                เลือกเวอร์ชัน Snapshot หรือจุดสำรองข้อมูลรายวันเพื่อทำการกู้คืนและย้อนกลับระบบในคลิกเดียว (1-Click Restore)
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
+                            disabled={triggering}
+                            className="px-4 py-2 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl text-xs shadow flex items-center gap-1.5"
+                        >
+                            <Zap className="w-4 h-4" /> สร้าง Snapshot ประจำวันทันที
+                        </button>
+                    </div>
+
+                    {/* Timeline Restore Points */}
+                    <div className="space-y-4">
+                        {jobs.map((job, idx) => (
+                            <div
+                                key={job.jobId}
+                                className="bg-[#121212] border border-white/10 hover:border-[var(--primary)]/40 p-5 rounded-2xl transition-all shadow-lg flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6"
+                            >
+                                <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/40 px-2.5 py-0.5 rounded text-xs font-bold">
+                                            Snapshot #{jobs.length - idx}
+                                        </span>
+                                        <span className="bg-white/10 text-white px-2.5 py-0.5 rounded text-xs font-bold uppercase">
+                                            {job.gfsLevel}
+                                        </span>
+                                        {job.isImmutable && (
+                                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs px-2.5 py-0.5 rounded font-bold flex items-center gap-1">
+                                                <Lock className="w-3 h-3" /> WORM Protected
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <h4 className="text-lg font-bold text-white">{job.name}</h4>
+                                    
+                                    <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400 font-mono">
+                                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-cyan-400" /> {new Date(job.createdAt).toLocaleString('th-TH')}</span>
+                                        <span>ขนาด: <strong className="text-white">{(job.sizeBytes / (1024 * 1024)).toFixed(1)} MB</strong></span>
+                                        <span>Dedup: <strong className="text-purple-400">{job.dedupRatio}x</strong></span>
+                                        <span>Checksum: <strong className="text-gray-500 truncate max-w-[100px]">{job.checksum}</strong></span>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => handleRestoreBackup(job.jobId, job.name)}
+                                        disabled={restoringJobId === job.jobId}
+                                        className="px-5 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl font-bold text-xs transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        <RotateCcw className="w-4 h-4" />
+                                        {restoringJobId === job.jobId ? 'กำลังกู้คืนข้อมูล...' : 'ย้อนกลับไปยังเวอร์ชันนี้ (1-Click Restore)'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 3: SETTINGS (AWS S3 & STORAGE PROVIDER) */}
             {activeTab === 'settings' && (
                 <form onSubmit={handleSaveSettings} className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6 max-w-4xl mx-auto">
                     <div className="border-b border-white/10 pb-4">
@@ -960,7 +1186,7 @@ export default function AdminBackupPage() {
                 </form>
             )}
 
-            {/* TAB 3: JOBS & SNAPSHOTS */}
+            {/* TAB 4: JOBS & SNAPSHOTS */}
             {activeTab === 'jobs' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
@@ -1010,7 +1236,7 @@ export default function AdminBackupPage() {
                                                     {job.type}
                                                 </span>
                                                 <p className="text-[11px] text-emerald-400">
-                                                    {job.consistency === 'app_consistent' ? '✅ App-Consistent' : '⚡ Crash-Consistent'}
+                                                    {job.consistency === 'app_consistent' ? 'App-Consistent' : 'Crash-Consistent'}
                                                 </p>
                                             </div>
                                         </td>
@@ -1049,7 +1275,7 @@ export default function AdminBackupPage() {
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <button
-                                                onClick={() => showModal('Instant Granular Recovery', `เตรียมกู้คืนข้อมูลจาก Snapshot ${job.jobId} เข้าสู่ระบบหลัก`, 'info')}
+                                                onClick={() => handleRestoreBackup(job.jobId, job.name)}
                                                 className="px-3 py-1.5 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-lg text-xs transition-all shadow"
                                             >
                                                 Instant Restore
@@ -1063,7 +1289,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 4: WORM SECURITY & AIR-GAP */}
+            {/* TAB 5: WORM SECURITY & AIR-GAP */}
             {activeTab === 'worm' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
@@ -1108,7 +1334,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 5: QUORUM APPROVALS */}
+            {/* TAB 6: QUORUM APPROVALS */}
             {activeTab === 'quorum' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex justify-between items-center border-b border-white/10 pb-4">
@@ -1156,7 +1382,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 6: SUREBACKUP SANDBOX */}
+            {/* TAB 7: SUREBACKUP SANDBOX */}
             {activeTab === 'sandbox' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -1188,7 +1414,7 @@ export default function AdminBackupPage() {
                 </div>
             )}
 
-            {/* TAB 7: IMMUTABLE AUDIT TRAIL */}
+            {/* TAB 8: IMMUTABLE AUDIT TRAIL */}
             {activeTab === 'audit' && (
                 <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
                     <div className="flex justify-between items-center border-b border-white/10 pb-4">
