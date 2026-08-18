@@ -1,12 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { getAnalytics, getSlip2GoInfo } = require('../controllers/adminController');
+const { getAnalytics, getSlip2GoInfo, getMasterDashboardData } = require('../controllers/adminController');
 const { updateLauncherConfig, uploadLauncherLogo, uploadLauncherBackground, uploadLauncherFile, uploadLauncherPresetFile } = require('../controllers/launcherController');
 const { upload, processImage } = require('../middleware/uploadMiddleware');
 const { uploadLimiter } = require('../middleware/rateLimitMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+
+// @route   GET api/admin/master-dashboard
+// @desc    Get master enterprise dashboard analytics & system monitoring
+// @access  Public / Admin
+router.get('/master-dashboard', getMasterDashboardData);
 
 // @route   GET api/admin/analytics
 // @desc    Get dashboard analytics data
