@@ -11,7 +11,7 @@ const ALL_PERMISSIONS = [
     'dashboard', 'info', 'players', 'server', 'launcher',
     'console', 'wiki', 'tickets', 'packages', 'products',
     'categories', 'redeem', 'users', 'transactions', 'payments',
-    'database', 'settings', 'permissions',
+    'database', 'backup', 'settings', 'permissions',
 ];
 
 // ─── Middleware ────────────────────────────────────────────────────────────────

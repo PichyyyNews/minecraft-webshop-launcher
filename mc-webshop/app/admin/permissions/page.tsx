@@ -36,6 +36,7 @@ const PERMISSION_ITEMS = [
     { key: 'transactions', label: 'Transactions', icon: ReceiptText },
     { key: 'payments', label: 'Payment Settings', icon: CreditCard },
     { key: 'database', label: 'Database / AuthMe', icon: Database },
+    { key: 'backup', label: 'Backup & DR Engine', icon: ShieldCheck },
     { key: 'settings', label: 'Settings', icon: Settings },
 ];
 

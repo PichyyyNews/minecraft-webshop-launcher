@@ -34,6 +34,20 @@ const BackupSettingSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Schedule Presets
+    schedulePreset: {
+        type: String,
+        enum: ['hourly_1h', 'every_6h', 'every_12h', 'daily_midnight', 'weekly_sunday', 'custom'],
+        default: 'daily_midnight'
+    },
+    scheduleCustomTime: {
+        type: String,
+        default: '00:00'
+    },
+    autoBackupEnabled: {
+        type: Boolean,
+        default: true
+    },
     updatedBy: {
         type: String,
         default: 'Root Admin'

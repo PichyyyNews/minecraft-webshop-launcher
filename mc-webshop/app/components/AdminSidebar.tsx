@@ -84,7 +84,7 @@ export default function AdminSidebar({ isOpen, onClose }: AdminSidebarProps) {
         { href: '/admin/transactions', label: t('admin.transactions'), icon: <ReceiptText className="w-5 h-5" />, permissionKey: 'transactions' },
         { href: '/admin/payments', label: t('admin.settings.payment'), icon: <CreditCard className="w-5 h-5" />, permissionKey: 'payments' },
         { href: '/admin/database', label: 'Database', icon: <Database className="w-5 h-5" />, permissionKey: 'database' },
-        { href: '/admin/backup', label: 'Backup & DR Engine', icon: <ShieldCheck className="w-5 h-5" />, permissionKey: 'database' },
+        { href: '/admin/backup', label: 'Backup & DR Engine', icon: <ShieldCheck className="w-5 h-5" />, permissionKey: 'backup' },
         { href: '/admin/settings', label: t('admin.settings.title'), icon: <Settings className="w-5 h-5" />, permissionKey: 'settings' },
     ];
 

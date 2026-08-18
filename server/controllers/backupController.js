@@ -214,7 +214,10 @@ const updateBackupSettings = async (req, res) => {
             awsRegion,
             s3BucketName,
             wormRetentionDays,
-            localBackupDirectory
+            localBackupDirectory,
+            schedulePreset,
+            scheduleCustomTime,
+            autoBackupEnabled
         } = req.body;
 
         const actor = req.user ? (req.user.username || 'Root Admin') : 'Root Admin';
@@ -231,6 +234,11 @@ const updateBackupSettings = async (req, res) => {
         settings.s3BucketName = s3BucketName !== undefined ? s3BucketName : settings.s3BucketName;
         settings.wormRetentionDays = wormRetentionDays !== undefined ? parseInt(wormRetentionDays) : settings.wormRetentionDays;
         settings.localBackupDirectory = localBackupDirectory || settings.localBackupDirectory;
+
+        // Schedule Presets
+        if (schedulePreset !== undefined) settings.schedulePreset = schedulePreset;
+        if (scheduleCustomTime !== undefined) settings.scheduleCustomTime = scheduleCustomTime;
+        if (autoBackupEnabled !== undefined) settings.autoBackupEnabled = autoBackupEnabled;
 
         // Mark configured if bucket & credentials exist
         settings.isConfigured = Boolean(

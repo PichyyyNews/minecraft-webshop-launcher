@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
     Database, Shield, Lock, HardDrive, RefreshCw, Cpu, Server, FileText, 
     CheckCircle, Clock, Zap, Activity, Key, Check, Settings, Save,
-    BarChart3, Layers, TrendingUp, Pause, Play, RotateCcw, Calendar, History
+    BarChart3, Layers, TrendingUp, Pause, Play, RotateCcw, Calendar, History,
+    Sliders, CheckCircle2, AlertTriangle, ShieldCheck, Sparkles, Timer
 } from 'lucide-react';
 import { API_URL } from '../../utils/config';
 import Modal from '../../components/Modal';
@@ -104,6 +106,9 @@ interface BackupSettingData {
     wormRetentionDays: number;
     localBackupDirectory: string;
     isConfigured: boolean;
+    schedulePreset?: 'hourly_1h' | 'every_6h' | 'every_12h' | 'daily_midnight' | 'weekly_sunday' | 'custom';
+    scheduleCustomTime?: string;
+    autoBackupEnabled?: boolean;
     updatedBy: string;
     updatedAt: string;
 }
@@ -152,14 +157,28 @@ function generateSmoothPath(points: { x: number; y: number }[]): string {
     return path;
 }
 
+const SCHEDULE_PRESETS = [
+    { id: 'daily_midnight', label: 'ทุกวัน เวลา 00:00 น.', desc: 'สำรองข้อมูลวันละ 1 ครั้งตอนเที่ยงคืน (แนะนำ / ค่าเริ่มต้น)' },
+    { id: 'every_6h', label: 'ทุก 6 ชั่วโมง', desc: 'ความถี่สูง 4 ครั้งต่อวัน (00:00, 06:00, 12:00, 18:00)' },
+    { id: 'every_12h', label: 'ทุก 12 ชั่วโมง', desc: 'ความถี่ปานกลาง 2 ครั้งต่อวัน (00:00, 12:00)' },
+    { id: 'weekly_sunday', label: 'ทุกสัปดาห์ (วันอาทิตย์)', desc: 'สำรองข้อมูลสัปดาห์ละ 1 ครั้ง ทุกวันอาทิตย์ เวลา 00:00 น.' },
+    { id: 'custom', label: 'กำหนดเวลาเอง (Custom Time)', desc: 'ระบุเวลาที่ต้องการให้ระบบทำ Snapshot อัตโนมัติ' }
+];
+
 export default function AdminBackupPage() {
+    const router = useRouter();
+
+    // Mode Switcher: 'simple' (Default Easy 1-Click UI) vs 'advanced' (Full DR Suite)
+    const [viewMode, setViewMode] = useState<'simple' | 'advanced'>('simple');
+
+    // Advanced Tabs
     const [activeTab, setActiveTab] = useState<'overview' | 'restore' | 'settings' | 'jobs' | 'worm' | 'quorum' | 'sandbox' | 'audit'>('overview');
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState<BackupStats | null>(null);
     const [collections, setCollections] = useState<CollectionStat[]>([]);
     const [graphData, setGraphData] = useState<DayGraphData[]>([]);
     const [hourlyGraphData, setHourlyGraphData] = useState<HourlyGraphData[]>([]);
-    const [barGraphMode, setBarGraphMode] = useState<'hourly' | 'daily'>('hourly'); // 24-hours vs 30-days
+    const [barGraphMode, setBarGraphMode] = useState<'hourly' | 'daily'>('hourly');
 
     const [settings, setSettings] = useState<BackupSettingData | null>(null);
     const [jobs, setJobs] = useState<BackupJob[]>([]);
@@ -188,7 +207,7 @@ export default function AdminBackupPage() {
 
     const svgContainerRef = useRef<SVGSVGElement | null>(null);
 
-    // Form state for settings
+    // Form state for settings & schedule presets
     const [settingForm, setSettingForm] = useState<BackupSettingData>({
         provider: 'aws_s3',
         awsAccessKeyId: '',
@@ -198,6 +217,9 @@ export default function AdminBackupPage() {
         wormRetentionDays: 30,
         localBackupDirectory: './backups',
         isConfigured: false,
+        schedulePreset: 'daily_midnight',
+        scheduleCustomTime: '00:00',
+        autoBackupEnabled: true,
         updatedBy: '',
         updatedAt: ''
     });
@@ -218,6 +240,27 @@ export default function AdminBackupPage() {
 
     const closeModal = () => setModalProps(prev => ({ ...prev, isOpen: false }));
     const getToken = () => localStorage.getItem('adminToken');
+
+    // Permission Guard Check
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('adminUser');
+            if (!stored) {
+                router.push('/admin');
+                return;
+            }
+            const parsed = JSON.parse(stored);
+            const perms: string[] = parsed.permissions || [];
+            const isRoot: boolean = parsed.isRoot === true;
+
+            if (!isRoot && !perms.includes('backup')) {
+                router.push('/admin');
+                return;
+            }
+        } catch {
+            router.push('/admin');
+        }
+    }, [router]);
 
     // Fetch Dashboard Stats & DB Info
     const fetchData = useCallback(async () => {
@@ -241,7 +284,13 @@ export default function AdminBackupPage() {
                 setJobs(dataStats.jobs || []);
                 if (dataStats.settings) {
                     setSettings(dataStats.settings);
-                    setSettingForm(dataStats.settings);
+                    setSettingForm(prev => ({
+                        ...prev,
+                        ...dataStats.settings,
+                        schedulePreset: dataStats.settings.schedulePreset || 'daily_midnight',
+                        scheduleCustomTime: dataStats.settings.scheduleCustomTime || '00:00',
+                        autoBackupEnabled: dataStats.settings.autoBackupEnabled !== false
+                    }));
                 }
             }
 
@@ -291,7 +340,7 @@ export default function AdminBackupPage() {
 
                 setLivePoints(prev => {
                     const nextArr = [...prev, newPoint];
-                    if (nextArr.length > 60) nextArr.shift(); // High Density Buffer (Last 60 Points)
+                    if (nextArr.length > 60) nextArr.shift(); // 60 Points Buffer
                     return nextArr;
                 });
             }
@@ -315,24 +364,25 @@ export default function AdminBackupPage() {
         return () => clearInterval(timer);
     }, [fetchLiveMetric, refreshIntervalSec]);
 
-    // Save S3 & Storage Settings
-    const handleSaveSettings = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // Save S3 & Storage Settings & Schedule Presets
+    const handleSaveSettings = async (customPayload?: Partial<BackupSettingData>) => {
         setSavingSettings(true);
         try {
+            const payload = { ...settingForm, ...(customPayload || {}) };
             const res = await fetch(`${API_URL}/api/admin/backup/settings`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${getToken()}`
                 },
-                body: JSON.stringify(settingForm)
+                body: JSON.stringify(payload)
             });
 
             if (res.ok) {
                 const data = await res.json();
-                showModal('บันทึกสำเร็จ', data.message || 'บันทึกการตั้งค่าการเชื่อมต่อเรียบร้อยแล้ว', 'success');
+                showModal('บันทึกสำเร็จ', data.message || 'บันทึกการตั้งค่าระบบเรียบร้อยแล้ว', 'success');
                 setSettings(data.settings);
+                setSettingForm(prev => ({ ...prev, ...data.settings }));
                 fetchData();
             } else {
                 const err = await res.json();
@@ -346,7 +396,7 @@ export default function AdminBackupPage() {
     };
 
     // Trigger Instant Snapshot
-    const handleTriggerBackup = async (type: string, consistency: string) => {
+    const handleTriggerBackup = async (type: string = 'snapshot', consistency: string = 'app_consistent') => {
         setTriggering(true);
         try {
             const res = await fetch(`${API_URL}/api/admin/backup/trigger`, {
@@ -364,7 +414,7 @@ export default function AdminBackupPage() {
             });
 
             if (res.ok) {
-                showModal('สำเร็จ!', 'สร้าง Snapshot / Backup สำเร็จ และล็อก WORM Immutability เรียบร้อยแล้ว', 'success');
+                showModal('สำเร็จ!', 'สร้างจุดสำรองข้อมูล (Snapshot) สำเร็จ และระบบได้ทำการจัดเก็บอย่างปลอดภัยเรียบร้อยแล้ว', 'success');
                 fetchData();
             } else {
                 const err = await res.json();
@@ -381,7 +431,7 @@ export default function AdminBackupPage() {
     const handleRestoreBackup = (jobId: string, jobName: string) => {
         showModal(
             'ยืนยันการกู้คืนข้อมูล (Point-in-Time Restore)',
-            `คุณแน่ใจหรือไม่ที่จะย้อนกลับฐานข้อมูลทั้งหมดไปยัง Snapshot "${jobName}" (${jobId})? ระบบจะทำการสแนปชอตสถานะปัจจุบันก่อนทำการย้อนกลับเพื่อความปลอดภัย`,
+            `คุณแน่ใจหรือไม่ที่จะย้อนกลับฐานข้อมูลทั้งหมดไปยังจุดสำรองข้อมูล "${jobName}" (${jobId})? ระบบจะทำการสแนปชอตสถานะปัจจุบันก่อนทำการย้อนกลับเพื่อความปลอดภัยสูงสุด`,
             'warning',
             'confirm',
             async () => {
@@ -488,7 +538,6 @@ export default function AdminBackupPage() {
         return { x, y, point: p };
     });
 
-    // Secondary Latency Curve Mapping
     const latencyCoords = livePoints.map((p, idx) => {
         const x = (idx / Math.max(livePoints.length - 1, 1)) * chartWidth;
         const y = chartHeight - (p.latencyMs / 40) * (chartHeight - 60) - 20;
@@ -502,971 +551,1177 @@ export default function AdminBackupPage() {
         ? `${smoothLineD} L ${coords[coords.length - 1].x},${chartHeight} L ${coords[0].x},${chartHeight} Z`
         : '';
 
-    // Active Bar Graph Data Selection (24-Hours vs 30-Days)
     const activeBarData = barGraphMode === 'hourly' ? hourlyGraphData : graphData;
     const maxActivity = Math.max(...activeBarData.map(d => d.inserts + d.updates + d.deletes + d.systemLogs), 10);
-
     const activeHoverPoint = hoveredPointIndex !== null && coords[hoveredPointIndex] ? coords[hoveredPointIndex] : null;
+
+    const latestJob = jobs.length > 0 ? jobs[0] : null;
+    const activePresetObj = SCHEDULE_PRESETS.find(p => p.id === (settingForm.schedulePreset || 'daily_midnight')) || SCHEDULE_PRESETS[0];
 
     return (
         <div className="p-6 max-w-7xl mx-auto text-white space-y-6">
-            {/* Header Banner */}
-            <div className="bg-gradient-to-r from-[#1e1e1e] via-[#1a233a] to-[#1e1e1e] border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-                <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-[var(--primary)]/10 rounded-full blur-3xl pointer-events-none" />
+            {/* Top Control Header with Simple vs Advanced Mode Switch */}
+            <div className="bg-[#1e1e1e] border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-10 h-10 rounded-2xl bg-[var(--primary)]/20 border border-[var(--primary)]/40 flex items-center justify-center">
-                                <Shield className="w-6 h-6 text-[var(--primary)]" />
+                                <ShieldCheck className="w-6 h-6 text-[var(--primary)]" />
                             </div>
                             <h1 className="text-2xl lg:text-3xl font-extrabold text-white">
-                                Enterprise Backup & DR Control Center
+                                Backup & DR Engine
                             </h1>
-                            <span className="bg-red-500/20 text-red-400 border border-red-500/40 text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
-                                <Key className="w-3.5 h-3.5" /> Root Access Only
+                            <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Protected
                             </span>
                         </div>
                         <p className="text-gray-400 text-sm">
-                            ศูนย์ควบคุมและกู้คืนระบบฐานข้อมูล ป้องกัน Ransomware ด้วย WORM Immutability, GFS Rotation, 3-2-1 Rule และ Real-Time Audit Log
+                            ระบบสำรองข้อมูลและกู้คืนฐานข้อมูลอัจฉริยะ ป้องกันข้อมูลสูญหายและ Ransomware พร้อมระบบย้อนกลับในคลิกเดียว
                         </p>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex flex-wrap items-center gap-3">
-                        <button
-                            onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
-                            disabled={triggering}
-                            className="px-4 py-2.5 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 text-sm disabled:opacity-50"
-                        >
-                            <Zap className="w-4 h-4" />
-                            {triggering ? 'กำลังสร้าง Snapshot...' : 'สร้าง Auto CoW Snapshot ทันที'}
-                        </button>
+                    {/* Mode Switcher Buttons */}
+                    <div className="flex items-center gap-3">
+                        <div className="bg-[#121212] p-1.5 rounded-2xl border border-white/10 flex items-center gap-1 shadow-inner">
+                            <button
+                                onClick={() => setViewMode('simple')}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                    viewMode === 'simple'
+                                        ? 'bg-[var(--primary)] text-black font-extrabold shadow-lg'
+                                        : 'text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <Sparkles className="w-4 h-4" /> โหมดพื้นฐาน (Simple Mode)
+                            </button>
+                            <button
+                                onClick={() => setViewMode('advanced')}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                    viewMode === 'advanced'
+                                        ? 'bg-[var(--primary)] text-black font-extrabold shadow-lg'
+                                        : 'text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                <Sliders className="w-4 h-4" /> โหมดขั้นสูง (Advanced Mode)
+                            </button>
+                        </div>
+
                         <button
                             onClick={fetchData}
-                            className="p-2.5 bg-white/5 hover:bg-white/10 text-white rounded-xl transition-all border border-white/10"
+                            className="p-2.5 bg-[#121212] hover:bg-white/10 text-white rounded-xl transition-all border border-white/10"
                             title="รีเฟรชข้อมูล"
                         >
                             <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin text-[var(--primary)]' : ''}`} />
                         </button>
                     </div>
                 </div>
-
-                {/* Sub Header Configuration Notice */}
-                <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs">
-                    <div className="flex flex-wrap items-center gap-3">
-                        {settings?.isConfigured ? (
-                            <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg font-bold">
-                                <CheckCircle className="w-4 h-4" /> Cloud Storage Configured ({settings.s3BucketName})
-                            </span>
-                        ) : (
-                            <span className="flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg font-bold">
-                                <Settings className="w-4 h-4" /> Cloud Storage (AWS S3) Not Configured - Using Local Backup Mode
-                            </span>
-                        )}
-                        <span className="text-gray-400">โหมดจัดเก็บ: <strong className="text-white uppercase">{settings?.provider || 'local'}</strong></span>
-                    </div>
-
-                    <button
-                        onClick={() => setActiveTab('settings')}
-                        className="text-[var(--primary)] hover:underline font-semibold flex items-center gap-1"
-                    >
-                        <Settings className="w-3.5 h-3.5" /> ตั้งค่าการเชื่อมต่อ S3 / Storage Provider ➔
-                    </button>
-                </div>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex gap-2 border-b border-white/10 overflow-x-auto pb-2">
-                {[
-                    { id: 'overview', label: 'ภาพรวม & DB Graphs', icon: BarChart3 },
-                    { id: 'restore', label: 'หน้าย้อนหลัง & Restore Points', icon: RotateCcw, badge: jobs.length },
-                    { id: 'settings', label: 'ตั้งค่าการเชื่อมต่อ S3 / Cloud', icon: Settings },
-                    { id: 'jobs', label: 'รายการ Backup & Snapshots', icon: Database },
-                    { id: 'worm', label: 'Security & WORM Vault', icon: Lock },
-                    { id: 'quorum', label: 'Quorum Approvals', icon: Key, badge: quorumRequests.filter(r => r.status === 'pending').length },
-                    { id: 'sandbox', label: 'SureBackup Sandbox', icon: Cpu },
-                    { id: 'audit', label: 'Immutable Audit Trail', icon: FileText }
-                ].map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = activeTab === tab.id;
-                    return (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                                isActive
-                                    ? 'bg-[var(--primary)] text-black font-bold shadow-lg'
-                                    : 'text-gray-400 hover:text-white hover:bg-white/5'
-                            }`}
-                        >
-                            <Icon className="w-4 h-4" />
-                            {tab.label}
-                            {tab.badge ? (
-                                <span className="ml-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                                    {tab.badge}
-                                </span>
-                            ) : null}
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* TAB 1: OVERVIEW & ULTRA HIGH-DENSITY REALTIME STOCK CHART */}
-            {activeTab === 'overview' && stats && (
+            {/* ========================================================================= */}
+            {/* VIEW MODE 1: SIMPLE MODE (BEGINNER-FRIENDLY & 1-CLICK STORYTELLING)     */}
+            {/* ========================================================================= */}
+            {viewMode === 'simple' && (
                 <div className="space-y-6">
-                    {/* Top System Health Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                    {/* Storytelling Status Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
                             <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <Database className="w-6 h-6" />
+                                <ShieldCheck className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">MongoDB Collections</p>
-                                <p className="text-xl font-bold text-white mt-0.5">{stats.totalCollectionsCount} Collections</p>
-                                <span className="text-[11px] text-emerald-400">รวม {stats.totalDocumentsCount.toLocaleString()} เอกสาร (Documents)</span>
+                                <p className="text-xs text-gray-400 font-medium">สถานะความปลอดภัย</p>
+                                <p className="text-lg font-bold text-white mt-0.5">ระบบปลอดภัยดี (100%)</p>
+                                <span className="text-[11px] text-emerald-400">ล็อกไฟล์ WORM ป้องกันการลบ</span>
                             </div>
                         </div>
 
-                        <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
                             <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
                                 <Clock className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">Recovery Point Objective (RPO)</p>
-                                <p className="text-xl font-bold text-white mt-0.5">{stats.rpoStatus}</p>
-                                <span className="text-[11px] text-cyan-400">Near-CDP Journal Stream</span>
+                                <p className="text-xs text-gray-400 font-medium">สำรองข้อมูลล่าสุดเมื่อ</p>
+                                <p className="text-lg font-bold text-white mt-0.5">
+                                    {latestJob ? new Date(latestJob.createdAt).toLocaleString('th-TH') : 'ยังไม่มีประวัติ'}
+                                </p>
+                                <span className="text-[11px] text-cyan-400">{jobs.length} จุดสำรองข้อมูลที่มีอยู่</span>
                             </div>
                         </div>
 
-                        <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
                             <div className="p-3.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                                <Layers className="w-6 h-6" />
+                                <Timer className="w-6 h-6" />
                             </div>
                             <div>
-                                <p className="text-xs text-gray-400 font-medium">Deduplication Ratio</p>
-                                <p className="text-xl font-bold text-purple-300 mt-0.5">{stats.deduplicationRatio}</p>
-                                <span className="text-[11px] text-purple-400">ประหยัดพื้นที่ {stats.spaceSavedGB} GB</span>
-                            </div>
-                        </div>
-
-                        <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-5 shadow-xl flex items-center gap-4">
-                            <div className="p-3.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                <Shield className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <p className="text-xs text-gray-400 font-medium">WORM Immutability Vault</p>
-                                <p className="text-xl font-bold text-white mt-0.5">{stats.immutableWormCount} Locked Jobs</p>
-                                <span className="text-[11px] text-amber-400">Ransomware Shield Active</span>
+                                <p className="text-xs text-gray-400 font-medium">รอบเวลาการสำรองข้อมูลอัตโนมัติ</p>
+                                <p className="text-lg font-bold text-purple-300 mt-0.5">{activePresetObj.label}</p>
+                                <span className="text-[11px] text-purple-400">
+                                    {settingForm.autoBackupEnabled !== false ? 'เปิดใช้งานอยู่' : 'ปิดการทำงาน'}
+                                </span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Ultra High-Density Real-Time DB Stream Chart */}
-                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                        {/* Chart Control Header */}
-                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-4">
-                            <div>
-                                <div className="flex items-center gap-3">
-                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                        <TrendingUp className="w-5 h-5 text-[var(--primary)]" />
-                                        Ultra High-Density Real-Time DB Operations Stream (60-Points Buffer)
-                                    </h3>
-                                    {isStreaming ? (
-                                        <span className="flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse">
-                                            <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> LIVE STREAMING
-                                        </span>
-                                    ) : (
-                                        <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold">
-                                            STREAM PAUSED
-                                        </span>
-                                    )}
-                                </div>
-                                <p className="text-xs text-gray-400 mt-1">กราฟแสดงอัตราการประมวลผลข้อมูล (OPS), Response Latency และ Active Connections แบบเรียลไทม์ความละเอียดสูง 60 จุดข้อมูล</p>
+                    {/* Giant 1-Click Instant Backup Card */}
+                    <div className="bg-gradient-to-br from-[#1e1e1e] to-[#121212] border border-white/10 rounded-3xl p-8 shadow-2xl text-center relative overflow-hidden">
+                        <div className="max-w-2xl mx-auto space-y-5">
+                            <div className="w-16 h-16 rounded-2xl bg-[var(--primary)]/20 border border-[var(--primary)]/40 flex items-center justify-center mx-auto text-[var(--primary)]">
+                                <Zap className="w-8 h-8" />
                             </div>
+                            <h2 className="text-2xl font-black text-white">
+                                สำรองข้อมูลระบบทั้งหมดในคลิกเดียว (Instant 1-Click Snapshot)
+                            </h2>
+                            <p className="text-gray-400 text-sm leading-relaxed">
+                                ระบบจะทำการบันทึกภาพรวมของฐานข้อมูลทั้งหมด (App-Consistent Snapshot) อย่างรวดเร็วโดยไม่กระทบต่อการเล่นของผู้เล่น และล็อกไฟล์ป้องกันการถูกทำลายอัตโนมัติ
+                            </p>
+                            <div className="pt-2">
+                                <button
+                                    onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
+                                    disabled={triggering}
+                                    className="px-8 py-4 bg-[var(--primary)] hover:brightness-110 text-black font-extrabold rounded-2xl transition-all shadow-xl text-base disabled:opacity-50 inline-flex items-center gap-3 active:scale-95"
+                                >
+                                    {triggering ? (
+                                        <>
+                                            <RefreshCw className="w-5 h-5 animate-spin" />
+                                            กำลังดำเนินการสำรองข้อมูล...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Zap className="w-5 h-5 fill-current" />
+                                            สร้างจุดสำรองข้อมูลทันที (Instant Backup)
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
-                            {/* Interval & Stream Controls */}
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-xs text-gray-400 font-semibold mr-1">ความถี่ Real-Time:</span>
-                                {[
-                                    { sec: 1, label: '1s' },
-                                    { sec: 2, label: '2s' },
-                                    { sec: 5, label: '5s' },
-                                    { sec: 10, label: '10s' },
-                                    { sec: 30, label: '30s' },
-                                    { sec: 60, label: '60s' }
-                                ].map(item => (
-                                    <button
-                                        key={item.sec}
-                                        onClick={() => setRefreshIntervalSec(item.sec)}
-                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                                            refreshIntervalSec === item.sec
-                                                ? 'bg-[var(--primary)] text-black font-extrabold shadow'
-                                                : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                    {/* Auto Backup Preset Scheduler Section */}
+                    <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-5">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-white/10 pb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <Timer className="w-5 h-5 text-[var(--primary)]" />
+                                    การตั้งเวลาสำรองข้อมูลอัตโนมัติ (Automated Schedule Presets)
+                                </h3>
+                                <p className="text-xs text-gray-400">เลือกความถี่ที่ต้องการให้ระบบทำการ Snapshot สำรองข้อมูลอัตโนมัติ</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs text-gray-300 font-semibold cursor-pointer flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={settingForm.autoBackupEnabled !== false}
+                                        onChange={(e) => {
+                                            const updated = e.target.checked;
+                                            setSettingForm({ ...settingForm, autoBackupEnabled: updated });
+                                            handleSaveSettings({ autoBackupEnabled: updated });
+                                        }}
+                                        className="w-4 h-4 accent-[var(--primary)] rounded cursor-pointer"
+                                    />
+                                    เปิดใช้งานระบบสำรองอัตโนมัติ
+                                </label>
+                            </div>
+                        </div>
+
+                        {/* Presets Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {SCHEDULE_PRESETS.map((preset) => {
+                                const isSelected = (settingForm.schedulePreset || 'daily_midnight') === preset.id;
+                                return (
+                                    <div
+                                        key={preset.id}
+                                        onClick={() => {
+                                            setSettingForm({ ...settingForm, schedulePreset: preset.id as typeof settingForm.schedulePreset });
+                                            handleSaveSettings({ schedulePreset: preset.id as typeof settingForm.schedulePreset });
+                                        }}
+                                        className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+                                            isSelected
+                                                ? 'bg-[var(--primary)]/10 border-[var(--primary)] text-white shadow-lg'
+                                                : 'bg-[#121212] border-white/10 hover:border-white/20 text-gray-400'
                                         }`}
                                     >
-                                        {item.label}
-                                    </button>
-                                ))}
-
-                                <button
-                                    onClick={() => setIsStreaming(!isStreaming)}
-                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ml-2 ${
-                                        isStreaming
-                                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
-                                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                                    }`}
-                                >
-                                    {isStreaming ? <><Pause className="w-3.5 h-3.5" /> พักสตรีม</> : <><Play className="w-3.5 h-3.5" /> เล่นสตรีม</>}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Stock Ticker Banner Metrics */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#121212] p-4 rounded-xl border border-white/5 font-mono text-xs">
-                            <div>
-                                <p className="text-gray-500 text-[10px]">CURRENT OPS (Ops/Sec)</p>
-                                <p className="text-2xl font-extrabold text-[var(--primary)]">{currentOps} <span className="text-xs text-gray-400">OPS</span></p>
-                            </div>
-                            <div>
-                                <p className="text-gray-500 text-[10px]">READ / WRITE RATIO</p>
-                                <p className="text-sm font-bold text-cyan-400">{currentReads} Read / {currentWrites} Write</p>
-                            </div>
-                            <div>
-                                <p className="text-gray-500 text-[10px]">PEAK / MIN OPS</p>
-                                <p className="text-sm font-bold text-purple-400">Peak {peakOps} / Min {minOps}</p>
-                            </div>
-                            <div>
-                                <p className="text-gray-500 text-[10px]">RESPONSE LATENCY</p>
-                                <p className="text-sm font-bold text-amber-400">{currentLatency} ms</p>
-                            </div>
-                        </div>
-
-                        {/* High-Definition Interactive Multi-Curve Stream Render */}
-                        <div className="pt-2">
-                            <div className="bg-[#121212] border border-white/5 rounded-2xl p-4 relative overflow-hidden">
-                                {coords.length > 0 ? (
-                                    <div className="relative">
-                                        <svg
-                                            ref={svgContainerRef}
-                                            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                                            onMouseMove={handleChartMouseMove}
-                                            onMouseLeave={() => setHoveredPointIndex(null)}
-                                            className="w-full h-64 overflow-visible cursor-crosshair"
-                                        >
-                                            <defs>
-                                                <linearGradient id="tradingViewGradient" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.45" />
-                                                    <stop offset="50%" stopColor="var(--primary)" stopOpacity="0.15" />
-                                                    <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
-                                                </linearGradient>
-                                                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                                                    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                                                    <feMerge>
-                                                        <feMergeNode in="coloredBlur"/>
-                                                        <feMergeNode in="SourceGraphic"/>
-                                                    </feMerge>
-                                                </filter>
-                                            </defs>
-
-                                            {/* Horizontal Grid lines with Y-Axis Values */}
-                                            {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-                                                const val = Math.round(maxVal - ratio * range);
-                                                const y = chartHeight * ratio;
-                                                return (
-                                                    <g key={i}>
-                                                        <line x1="0" y1={y} x2={chartWidth} y2={y} stroke="#ffffff08" strokeDasharray="4 4" />
-                                                        <text x="5" y={y - 4} fill="#666" fontSize="10" fontFamily="monospace">
-                                                            {val} OPS
-                                                        </text>
-                                                    </g>
-                                                );
-                                            })}
-
-                                            {/* Smooth Cubic Bezier Area Fill */}
-                                            {fillAreaD && (
-                                                <path d={fillAreaD} fill="url(#tradingViewGradient)" />
-                                            )}
-
-                                            {/* Secondary Latency Overlay Line (Amber) */}
-                                            {smoothLatencyD && (
-                                                <path
-                                                    d={smoothLatencyD}
-                                                    fill="none"
-                                                    stroke="#ffaa00"
-                                                    strokeWidth="1.5"
-                                                    strokeDasharray="3 3"
-                                                    opacity="0.7"
-                                                />
-                                            )}
-
-                                            {/* Primary OPS Smooth Cubic Bezier Main Line with Glow */}
-                                            {smoothLineD && (
-                                                <path
-                                                    d={smoothLineD}
-                                                    fill="none"
-                                                    stroke="var(--primary)"
-                                                    strokeWidth="3"
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    filter="url(#glow)"
-                                                />
-                                            )}
-
-                                            {/* Active Hover Crosshair Line */}
-                                            {activeHoverPoint && (
-                                                <g>
-                                                    <line
-                                                        x1={activeHoverPoint.x}
-                                                        y1="0"
-                                                        x2={activeHoverPoint.x}
-                                                        y2={chartHeight}
-                                                        stroke="var(--primary)"
-                                                        strokeWidth="1.5"
-                                                        strokeDasharray="4 4"
-                                                    />
-                                                    <circle
-                                                        cx={activeHoverPoint.x}
-                                                        cy={activeHoverPoint.y}
-                                                        r="6"
-                                                        fill="#55ff55"
-                                                        stroke="#000"
-                                                        strokeWidth="2"
-                                                    />
-                                                </g>
-                                            )}
-
-                                            {/* Live Pulsing Dot at latest point when not hovering */}
-                                            {!activeHoverPoint && coords.length > 0 && (() => {
-                                                const lastPt = coords[coords.length - 1];
-                                                return (
-                                                    <g>
-                                                        <circle cx={lastPt.x} cy={lastPt.y} r="6" fill="var(--primary)" className="animate-ping opacity-75" />
-                                                        <circle cx={lastPt.x} cy={lastPt.y} r="4" fill="#55ff55" />
-                                                    </g>
-                                                );
-                                            })()}
-                                        </svg>
-
-                                        {/* Dynamic Crosshair Inspection Tooltip Card */}
-                                        {activeHoverPoint && (
-                                            <div
-                                                className="absolute top-2 bg-black/90 border border-[var(--primary)]/40 p-3 rounded-xl shadow-2xl text-xs space-y-1 font-mono pointer-events-none backdrop-blur-md z-30"
-                                                style={{
-                                                    left: Math.min(Math.max(activeHoverPoint.x - 60, 10), chartWidth - 180)
-                                                }}
-                                            >
-                                                <p className="font-bold text-white border-b border-white/10 pb-1 mb-1">
-                                                    เวลา: {activeHoverPoint.point.time}
-                                                </p>
-                                                <p className="text-[var(--primary)] font-bold">OPS: {activeHoverPoint.point.ops} ops/sec</p>
-                                                <p className="text-cyan-400">Reads: {activeHoverPoint.point.reads} / Writes: {activeHoverPoint.point.writes}</p>
-                                                <p className="text-amber-400">Latency: {activeHoverPoint.point.latencyMs} ms</p>
-                                                <p className="text-purple-400">Memory: {activeHoverPoint.point.memoryMB} MB</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
-                                        กำลังเชื่อมต่อข้อมูลสตรีม Real-Time ความละเอียดสูง...
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* High-Density Multi-Bar CRUD & Audit Activity Report Chart */}
-                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
-                            <div>
-                                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                                    <BarChart3 className="w-5 h-5 text-[var(--primary)]" />
-                                    รายงานกิจกรรม เพิ่ม/ลบ/แก้ไข และ Audit Logs (High-Density Multi-Bar Chart)
-                                </h3>
-                                <p className="text-xs text-gray-400">แสดงความถี่ของ Inserts (เพิ่ม), Updates (แก้ไข), Deletes (ลบ) และ Audit Logs รายชั่วโมง / รายวันแบบละเอียด</p>
-                            </div>
-
-                            {/* Hourly vs Daily Bar Mode Selector */}
-                            <div className="flex items-center gap-2 bg-[#121212] p-1 rounded-xl border border-white/10">
-                                <button
-                                    onClick={() => setBarGraphMode('hourly')}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                        barGraphMode === 'hourly'
-                                            ? 'bg-[var(--primary)] text-black font-extrabold shadow'
-                                            : 'text-gray-400 hover:text-white'
-                                    }`}
-                                >
-                                    24 ชั่วโมงย้อนหลัง (Hourly 24-Bars)
-                                </button>
-                                <button
-                                    onClick={() => setBarGraphMode('daily')}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                        barGraphMode === 'daily'
-                                            ? 'bg-[var(--primary)] text-black font-extrabold shadow'
-                                            : 'text-gray-400 hover:text-white'
-                                    }`}
-                                >
-                                    30 วันย้อนหลัง (Daily 30-Bars)
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Color Legend */}
-                        <div className="flex flex-wrap items-center gap-4 text-xs font-semibold pt-1">
-                            <span className="flex items-center gap-1.5 text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> Inserts (เพิ่ม)</span>
-                            <span className="flex items-center gap-1.5 text-cyan-400"><div className="w-3 h-3 bg-cyan-500 rounded-sm" /> Updates (แก้ไข)</span>
-                            <span className="flex items-center gap-1.5 text-red-400"><div className="w-3 h-3 bg-red-500 rounded-sm" /> Deletes (ลบ)</span>
-                            <span className="flex items-center gap-1.5 text-purple-400"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Audit Logs (ระบบ)</span>
-                        </div>
-
-                        {/* Interactive High-Density Dense Visual Stacked Bar Chart */}
-                        <div className="pt-4 pb-2">
-                            <div className="h-56 flex items-end justify-between gap-1 border-b border-white/10 pb-2 px-1">
-                                {activeBarData.map((d, index) => {
-                                    const total = d.inserts + d.updates + d.deletes + d.systemLogs;
-                                    const heightPct = Math.min(Math.round((total / maxActivity) * 100), 100);
-                                    const label = 'time' in d ? d.time : d.date;
-                                    const fullLabel = 'fullTime' in d ? d.fullTime : d.fullDate;
-
-                                    return (
-                                        <div key={index} className="flex-1 flex flex-col items-center gap-1.5 group relative min-w-[12px]">
-                                            {/* Hover Inspection Tooltip */}
-                                            <div className="absolute -top-24 opacity-0 group-hover:opacity-100 transition-opacity bg-black border border-white/20 p-2.5 rounded-xl text-[11px] text-gray-200 z-30 pointer-events-none whitespace-nowrap shadow-2xl font-mono">
-                                                <p className="font-bold text-white mb-1">{fullLabel}</p>
-                                                <p className="text-emerald-400">Inserts: {d.inserts}</p>
-                                                <p className="text-cyan-400">Updates: {d.updates}</p>
-                                                <p className="text-red-400">Deletes: {d.deletes}</p>
-                                                <p className="text-purple-400">System Logs: {d.systemLogs}</p>
-                                            </div>
-
-                                            <div className="w-full bg-white/5 rounded-t flex flex-col justify-end overflow-hidden" style={{ height: `${Math.max(heightPct, 12)}%` }}>
-                                                <div style={{ height: `${(d.inserts / total) * 100}%` }} className="bg-emerald-500 w-full" />
-                                                <div style={{ height: `${(d.updates / total) * 100}%` }} className="bg-cyan-500 w-full" />
-                                                <div style={{ height: `${(d.deletes / total) * 100}%` }} className="bg-red-500 w-full" />
-                                                <div style={{ height: `${(d.systemLogs / total) * 100}%` }} className="bg-purple-500 w-full" />
-                                            </div>
-                                            {index % (barGraphMode === 'hourly' ? 3 : 4) === 0 ? (
-                                                <span className="text-[10px] text-gray-400 font-mono truncate">{label}</span>
-                                            ) : (
-                                                <span className="text-[10px] text-transparent">.</span>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className={`text-sm font-bold ${isSelected ? 'text-[var(--primary)]' : 'text-white'}`}>
+                                                {preset.label}
+                                            </span>
+                                            {isSelected && (
+                                                <div className="w-5 h-5 rounded-full bg-[var(--primary)] text-black flex items-center justify-center text-xs font-black">
+                                                    ✓
+                                                </div>
                                             )}
                                         </div>
-                                    );
-                                })}
+                                        <p className="text-xs text-gray-400 leading-relaxed">{preset.desc}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Custom Time Selector if Custom is selected */}
+                        {settingForm.schedulePreset === 'custom' && (
+                            <div className="bg-[#121212] p-4 rounded-xl border border-white/10 flex items-center gap-4 text-xs">
+                                <span className="font-semibold text-white">ระบุเวลาที่ต้องการสำรองข้อมูลประจำวัน:</span>
+                                <input
+                                    type="time"
+                                    value={settingForm.scheduleCustomTime || '00:00'}
+                                    onChange={(e) => setSettingForm({ ...settingForm, scheduleCustomTime: e.target.value })}
+                                    className="bg-[#1e1e1e] border border-white/10 rounded-lg px-3 py-1.5 text-white outline-none focus:border-[var(--primary)]"
+                                />
+                                <button
+                                    onClick={() => handleSaveSettings()}
+                                    disabled={savingSettings}
+                                    className="px-3 py-1.5 bg-[var(--primary)] text-black font-bold rounded-lg text-xs hover:brightness-110"
+                                >
+                                    {savingSettings ? 'กำลังบันทึก...' : 'บันทึกเวลา'}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Simple Recent Restore Points Section */}
+                    <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <RotateCcw className="w-5 h-5 text-[var(--primary)]" />
+                                    จุดสำรองข้อมูลล่าสุด (Recent Restore Points)
+                                </h3>
+                                <p className="text-xs text-gray-400">เลือกจุดสำรองข้อมูลที่ต้องการเพื่อย้อนกลับระบบในคลิกเดียว</p>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Real MongoDB Collection Breakdown Table */}
-                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                        <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                            <h3 className="text-base font-bold text-white flex items-center gap-2">
-                                <Database className="w-5 h-5 text-[var(--primary)]" />
-                                ข้อมูลขนาดตารางในระบบ MongoDB ที่เปิดใช้อยู่จริง (Database Collections Breakdown)
-                            </h3>
-                            <span className="text-xs text-gray-400">สำรวจจาก Database 127.0.0.1 (webshopmc)</span>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm text-gray-300">
-                                <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
-                                    <tr>
-                                        <th className="px-4 py-3">ชื่อ Collection ในระบบ MongoDB</th>
-                                        <th className="px-4 py-3">จำนวนเอกสาร (Documents)</th>
-                                        <th className="px-4 py-3">ขนาดข้อมูล (Estimated Size KB)</th>
-                                        <th className="px-4 py-3 text-right">ขนาดข้อมูล (MB)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/5 font-mono text-xs">
-                                    {collections.map((col, idx) => (
-                                        <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                            <td className="px-4 py-3 font-bold text-white flex items-center gap-2">
-                                                <div className="w-2 h-2 rounded-full bg-[var(--primary)]" />
-                                                {col.name}
-                                            </td>
-                                            <td className="px-4 py-3 text-emerald-400 font-bold">
-                                                {col.count.toLocaleString()} รายการ
-                                            </td>
-                                            <td className="px-4 py-3 text-gray-300">
-                                                {col.sizeKB} KB
-                                            </td>
-                                            <td className="px-4 py-3 text-right font-bold text-purple-400">
-                                                {col.sizeMB} MB
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 2: POINT-IN-TIME RESTORE & BACKTRACK PAGE */}
-            {activeTab === 'restore' && (
-                <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6">
-                    <div className="border-b border-white/10 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div>
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <RotateCcw className="w-6 h-6 text-[var(--primary)]" />
-                                หน้าสำหรับการย้อนหลังข้อมูลฐานข้อมูล (Point-in-Time Restore & Backtrack Timeline)
-                            </h3>
-                            <p className="text-xs text-gray-400 mt-1">
-                                เลือกเวอร์ชัน Snapshot หรือจุดสำรองข้อมูลรายวันเพื่อทำการกู้คืนและย้อนกลับระบบในคลิกเดียว (1-Click Restore)
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
-                            disabled={triggering}
-                            className="px-4 py-2 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl text-xs shadow flex items-center gap-1.5"
-                        >
-                            <Zap className="w-4 h-4" /> สร้าง Snapshot ประจำวันทันที
-                        </button>
-                    </div>
-
-                    {/* Timeline Restore Points */}
-                    <div className="space-y-4">
-                        {jobs.map((job, idx) => (
-                            <div
-                                key={job.jobId}
-                                className="bg-[#121212] border border-white/10 hover:border-[var(--primary)]/40 p-5 rounded-2xl transition-all shadow-lg flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6"
-                            >
-                                <div className="space-y-2">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/40 px-2.5 py-0.5 rounded text-xs font-bold">
-                                            Snapshot #{jobs.length - idx}
-                                        </span>
-                                        <span className="bg-white/10 text-white px-2.5 py-0.5 rounded text-xs font-bold uppercase">
-                                            {job.gfsLevel}
-                                        </span>
-                                        {job.isImmutable && (
-                                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs px-2.5 py-0.5 rounded font-bold flex items-center gap-1">
-                                                <Lock className="w-3 h-3" /> WORM Protected
+                        <div className="space-y-3">
+                            {jobs.slice(0, 5).map((job) => (
+                                <div
+                                    key={job.jobId}
+                                    className="bg-[#121212] border border-white/10 hover:border-white/20 p-4 rounded-2xl transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
+                                >
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            <Database className="w-4 h-4 text-[var(--primary)]" />
+                                            <span className="text-sm font-bold text-white">{job.name}</span>
+                                            <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded font-mono uppercase">
+                                                {job.type}
                                             </span>
-                                        )}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 font-mono">
+                                            <span>{new Date(job.createdAt).toLocaleString('th-TH')}</span>
+                                            <span>•</span>
+                                            <span>ขนาด: {(job.sizeBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                                        </div>
                                     </div>
 
-                                    <h4 className="text-lg font-bold text-white">{job.name}</h4>
-                                    
-                                    <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400 font-mono">
-                                        <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-cyan-400" /> {new Date(job.createdAt).toLocaleString('th-TH')}</span>
-                                        <span>ขนาด: <strong className="text-white">{(job.sizeBytes / (1024 * 1024)).toFixed(1)} MB</strong></span>
-                                        <span>Dedup: <strong className="text-purple-400">{job.dedupRatio}x</strong></span>
-                                        <span>Checksum: <strong className="text-gray-500 truncate max-w-[100px]">{job.checksum}</strong></span>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3">
                                     <button
                                         onClick={() => handleRestoreBackup(job.jobId, job.name)}
                                         disabled={restoringJobId === job.jobId}
-                                        className="px-5 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl font-bold text-xs transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                        className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow"
                                     >
-                                        <RotateCcw className="w-4 h-4" />
-                                        {restoringJobId === job.jobId ? 'กำลังกู้คืนข้อมูล...' : 'ย้อนกลับไปยังเวอร์ชันนี้ (1-Click Restore)'}
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                        {restoringJobId === job.jobId ? 'กำลังย้อนกลับ...' : 'ย้อนกลับข้อมูล (Restore)'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* VIEW MODE 2: ADVANCED MODE (FULL ENTERPRISE DISASTER RECOVERY SUITE)     */}
+            {/* ========================================================================= */}
+            {viewMode === 'advanced' && (
+                <div className="space-y-6">
+                    {/* Advanced Tab Navigation */}
+                    <div className="flex gap-2 border-b border-white/10 overflow-x-auto pb-2">
+                        {[
+                            { id: 'overview', label: 'ภาพรวม & DB Graphs', icon: BarChart3 },
+                            { id: 'restore', label: 'หน้าย้อนหลัง & Restore Points', icon: RotateCcw, badge: jobs.length },
+                            { id: 'settings', label: 'ตั้งค่าการเชื่อมต่อ S3 / Cloud', icon: Settings },
+                            { id: 'jobs', label: 'รายการ Backup & Snapshots', icon: Database },
+                            { id: 'worm', label: 'Security & WORM Vault', icon: Lock },
+                            { id: 'quorum', label: 'Quorum Approvals', icon: Key, badge: quorumRequests.filter(r => r.status === 'pending').length },
+                            { id: 'sandbox', label: 'SureBackup Sandbox', icon: Cpu },
+                            { id: 'audit', label: 'Immutable Audit Trail', icon: FileText }
+                        ].map(tab => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                                        isActive
+                                            ? 'bg-[var(--primary)] text-black font-bold shadow-lg'
+                                            : 'text-gray-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                                >
+                                    <Icon className="w-4 h-4" />
+                                    {tab.label}
+                                    {tab.badge ? (
+                                        <span className="ml-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                                            {tab.badge}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* TAB 1: OVERVIEW & REALTIME STOCK CHART */}
+                    {activeTab === 'overview' && stats && (
+                        <div className="space-y-6">
+                            {/* Top System Health Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                                    <div className="p-3.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        <Database className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-400 font-medium">MongoDB Collections</p>
+                                        <p className="text-xl font-bold text-white mt-0.5">{stats.totalCollectionsCount} Collections</p>
+                                        <span className="text-[11px] text-emerald-400">รวม {stats.totalDocumentsCount.toLocaleString()} เอกสาร</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                                    <div className="p-3.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                        <Clock className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-400 font-medium">Recovery Point Objective (RPO)</p>
+                                        <p className="text-xl font-bold text-white mt-0.5">{stats.rpoStatus}</p>
+                                        <span className="text-[11px] text-cyan-400">Near-CDP Journal Stream</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                                    <div className="p-3.5 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                        <Layers className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-400 font-medium">Deduplication Ratio</p>
+                                        <p className="text-xl font-bold text-purple-300 mt-0.5">{stats.deduplicationRatio}</p>
+                                        <span className="text-[11px] text-purple-400">ประหยัดพื้นที่ {stats.spaceSavedGB} GB</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-xl flex items-center gap-4">
+                                    <div className="p-3.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                        <Shield className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-gray-400 font-medium">WORM Immutability Vault</p>
+                                        <p className="text-xl font-bold text-white mt-0.5">{stats.immutableWormCount} Locked Jobs</p>
+                                        <span className="text-[11px] text-amber-400">Ransomware Shield Active</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Ultra High-Density Real-Time DB Stream Chart */}
+                            <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-white/10 pb-4">
+                                    <div>
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                                <TrendingUp className="w-5 h-5 text-[var(--primary)]" />
+                                                Ultra High-Density Real-Time DB Operations Stream (60-Points Buffer)
+                                            </h3>
+                                            {isStreaming ? (
+                                                <span className="flex items-center gap-1.5 bg-red-500/10 text-red-400 border border-red-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse">
+                                                    <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" /> LIVE STREAMING
+                                                </span>
+                                            ) : (
+                                                <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                                                    STREAM PAUSED
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">กราฟแสดงอัตราการประมวลผลข้อมูล (OPS), Response Latency และ Active Connections แบบเรียลไทม์ความละเอียดสูง 60 จุดข้อมูล</p>
+                                    </div>
+
+                                    {/* Interval & Stream Controls */}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-xs text-gray-400 font-semibold mr-1">ความถี่ Real-Time:</span>
+                                        {[
+                                            { sec: 1, label: '1s' },
+                                            { sec: 2, label: '2s' },
+                                            { sec: 5, label: '5s' },
+                                            { sec: 10, label: '10s' },
+                                            { sec: 30, label: '30s' },
+                                            { sec: 60, label: '60s' }
+                                        ].map(item => (
+                                            <button
+                                                key={item.sec}
+                                                onClick={() => setRefreshIntervalSec(item.sec)}
+                                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                                                    refreshIntervalSec === item.sec
+                                                        ? 'bg-[var(--primary)] text-black font-extrabold shadow'
+                                                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
+                                                }`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                        ))}
+
+                                        <button
+                                            onClick={() => setIsStreaming(!isStreaming)}
+                                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ml-2 ${
+                                                isStreaming
+                                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                                                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                                            }`}
+                                        >
+                                            {isStreaming ? <><Pause className="w-3.5 h-3.5" /> พักสตรีม</> : <><Play className="w-3.5 h-3.5" /> เล่นสตรีม</>}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Stock Ticker Banner Metrics */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#121212] p-4 rounded-xl border border-white/10 font-mono text-xs">
+                                    <div>
+                                        <p className="text-gray-500 text-[10px]">CURRENT OPS (Ops/Sec)</p>
+                                        <p className="text-2xl font-extrabold text-[var(--primary)]">{currentOps} <span className="text-xs text-gray-400">OPS</span></p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500 text-[10px]">READ / WRITE RATIO</p>
+                                        <p className="text-sm font-bold text-cyan-400">{currentReads} Read / {currentWrites} Write</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500 text-[10px]">PEAK / MIN OPS</p>
+                                        <p className="text-sm font-bold text-purple-400">Peak {peakOps} / Min {minOps}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500 text-[10px]">RESPONSE LATENCY</p>
+                                        <p className="text-sm font-bold text-amber-400">{currentLatency} ms</p>
+                                    </div>
+                                </div>
+
+                                {/* High-Definition Interactive Multi-Curve Stream Render */}
+                                <div className="pt-2">
+                                    <div className="bg-[#121212] border border-white/10 rounded-2xl p-4 relative overflow-hidden">
+                                        {coords.length > 0 ? (
+                                            <div className="relative">
+                                                <svg
+                                                    ref={svgContainerRef}
+                                                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                                                    onMouseMove={handleChartMouseMove}
+                                                    onMouseLeave={() => setHoveredPointIndex(null)}
+                                                    className="w-full h-64 overflow-visible cursor-crosshair"
+                                                >
+                                                    <defs>
+                                                        <linearGradient id="tradingViewGradient" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.45" />
+                                                            <stop offset="50%" stopColor="var(--primary)" stopOpacity="0.15" />
+                                                            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.0" />
+                                                        </linearGradient>
+                                                        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                                                            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                                                            <feMerge>
+                                                                <feMergeNode in="coloredBlur"/>
+                                                                <feMergeNode in="SourceGraphic"/>
+                                                            </feMerge>
+                                                        </filter>
+                                                    </defs>
+
+                                                    {/* Horizontal Grid lines with Y-Axis Values */}
+                                                    {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
+                                                        const val = Math.round(maxVal - ratio * range);
+                                                        const y = chartHeight * ratio;
+                                                        return (
+                                                            <g key={i}>
+                                                                <line x1="0" y1={y} x2={chartWidth} y2={y} stroke="#ffffff08" strokeDasharray="4 4" />
+                                                                <text x="5" y={y - 4} fill="#666" fontSize="10" fontFamily="monospace">
+                                                                    {val} OPS
+                                                                </text>
+                                                            </g>
+                                                        );
+                                                    })}
+
+                                                    {/* Smooth Cubic Bezier Area Fill */}
+                                                    {fillAreaD && (
+                                                        <path d={fillAreaD} fill="url(#tradingViewGradient)" />
+                                                    )}
+
+                                                    {/* Secondary Latency Overlay Line (Amber) */}
+                                                    {smoothLatencyD && (
+                                                        <path
+                                                            d={smoothLatencyD}
+                                                            fill="none"
+                                                            stroke="#ffaa00"
+                                                            strokeWidth="1.5"
+                                                            strokeDasharray="3 3"
+                                                            opacity="0.7"
+                                                        />
+                                                    )}
+
+                                                    {/* Primary OPS Smooth Cubic Bezier Main Line with Glow */}
+                                                    {smoothLineD && (
+                                                        <path
+                                                            d={smoothLineD}
+                                                            fill="none"
+                                                            stroke="var(--primary)"
+                                                            strokeWidth="3"
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                            filter="url(#glow)"
+                                                        />
+                                                    )}
+
+                                                    {/* Active Hover Crosshair Line */}
+                                                    {activeHoverPoint && (
+                                                        <g>
+                                                            <line
+                                                                x1={activeHoverPoint.x}
+                                                                y1="0"
+                                                                x2={activeHoverPoint.x}
+                                                                y2={chartHeight}
+                                                                stroke="var(--primary)"
+                                                                strokeWidth="1.5"
+                                                                strokeDasharray="4 4"
+                                                            />
+                                                            <circle
+                                                                cx={activeHoverPoint.x}
+                                                                cy={activeHoverPoint.y}
+                                                                r="6"
+                                                                fill="#55ff55"
+                                                                stroke="#000"
+                                                                strokeWidth="2"
+                                                            />
+                                                        </g>
+                                                    )}
+
+                                                    {/* Live Pulsing Dot at latest point when not hovering */}
+                                                    {!activeHoverPoint && coords.length > 0 && (() => {
+                                                        const lastPt = coords[coords.length - 1];
+                                                        return (
+                                                            <g>
+                                                                <circle cx={lastPt.x} cy={lastPt.y} r="6" fill="var(--primary)" className="animate-ping opacity-75" />
+                                                                <circle cx={lastPt.x} cy={lastPt.y} r="4" fill="#55ff55" />
+                                                            </g>
+                                                        );
+                                                    })()}
+                                                </svg>
+
+                                                {/* Dynamic Crosshair Inspection Tooltip Card */}
+                                                {activeHoverPoint && (
+                                                    <div
+                                                        className="absolute top-2 bg-black/90 border border-[var(--primary)]/40 p-3 rounded-xl shadow-2xl text-xs space-y-1 font-mono pointer-events-none backdrop-blur-md z-30"
+                                                        style={{
+                                                            left: Math.min(Math.max(activeHoverPoint.x - 60, 10), chartWidth - 180)
+                                                        }}
+                                                    >
+                                                        <p className="font-bold text-white border-b border-white/10 pb-1 mb-1">
+                                                            เวลา: {activeHoverPoint.point.time}
+                                                        </p>
+                                                        <p className="text-[var(--primary)] font-bold">OPS: {activeHoverPoint.point.ops} ops/sec</p>
+                                                        <p className="text-cyan-400">Reads: {activeHoverPoint.point.reads} / Writes: {activeHoverPoint.point.writes}</p>
+                                                        <p className="text-amber-400">Latency: {activeHoverPoint.point.latencyMs} ms</p>
+                                                        <p className="text-purple-400">Memory: {activeHoverPoint.point.memoryMB} MB</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="h-64 flex items-center justify-center text-gray-500 text-sm">
+                                                กำลังเชื่อมต่อข้อมูลสตรีม Real-Time ความละเอียดสูง...
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* High-Density Multi-Bar CRUD & Audit Activity Report Chart */}
+                            <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
+                                    <div>
+                                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                            <BarChart3 className="w-5 h-5 text-[var(--primary)]" />
+                                            รายงานกิจกรรม เพิ่ม/ลบ/แก้ไข และ Audit Logs (High-Density Multi-Bar Chart)
+                                        </h3>
+                                        <p className="text-xs text-gray-400">แสดงความถี่ของ Inserts (เพิ่ม), Updates (แก้ไข), Deletes (ลบ) และ Audit Logs รายชั่วโมง / รายวันแบบละเอียด</p>
+                                    </div>
+
+                                    {/* Hourly vs Daily Bar Mode Selector */}
+                                    <div className="flex items-center gap-2 bg-[#121212] p-1 rounded-xl border border-white/10">
+                                        <button
+                                            onClick={() => setBarGraphMode('hourly')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                barGraphMode === 'hourly'
+                                                    ? 'bg-[var(--primary)] text-black font-extrabold shadow'
+                                                    : 'text-gray-400 hover:text-white'
+                                            }`}
+                                        >
+                                            24 ชั่วโมงย้อนหลัง (Hourly 24-Bars)
+                                        </button>
+                                        <button
+                                            onClick={() => setBarGraphMode('daily')}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                barGraphMode === 'daily'
+                                                    ? 'bg-[var(--primary)] text-black font-extrabold shadow'
+                                                    : 'text-gray-400 hover:text-white'
+                                            }`}
+                                        >
+                                            30 วันย้อนหลัง (Daily 30-Bars)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Color Legend */}
+                                <div className="flex flex-wrap items-center gap-4 text-xs font-semibold pt-1">
+                                    <span className="flex items-center gap-1.5 text-emerald-400"><div className="w-3 h-3 bg-emerald-500 rounded-sm" /> Inserts (เพิ่ม)</span>
+                                    <span className="flex items-center gap-1.5 text-cyan-400"><div className="w-3 h-3 bg-cyan-500 rounded-sm" /> Updates (แก้ไข)</span>
+                                    <span className="flex items-center gap-1.5 text-red-400"><div className="w-3 h-3 bg-red-500 rounded-sm" /> Deletes (ลบ)</span>
+                                    <span className="flex items-center gap-1.5 text-purple-400"><div className="w-3 h-3 bg-purple-500 rounded-sm" /> Audit Logs (ระบบ)</span>
+                                </div>
+
+                                {/* Interactive High-Density Dense Visual Stacked Bar Chart */}
+                                <div className="pt-4 pb-2">
+                                    <div className="h-56 flex items-end justify-between gap-1 border-b border-white/10 pb-2 px-1">
+                                        {activeBarData.map((d, index) => {
+                                            const total = d.inserts + d.updates + d.deletes + d.systemLogs;
+                                            const heightPct = Math.min(Math.round((total / maxActivity) * 100), 100);
+                                            const label = 'time' in d ? d.time : d.date;
+                                            const fullLabel = 'fullTime' in d ? d.fullTime : d.fullDate;
+
+                                            return (
+                                                <div key={index} className="flex-1 flex flex-col items-center gap-1.5 group relative min-w-[12px]">
+                                                    {/* Hover Inspection Tooltip */}
+                                                    <div className="absolute -top-24 opacity-0 group-hover:opacity-100 transition-opacity bg-black border border-white/20 p-2.5 rounded-xl text-[11px] text-gray-200 z-30 pointer-events-none whitespace-nowrap shadow-2xl font-mono">
+                                                        <p className="font-bold text-white mb-1">{fullLabel}</p>
+                                                        <p className="text-emerald-400">Inserts: {d.inserts}</p>
+                                                        <p className="text-cyan-400">Updates: {d.updates}</p>
+                                                        <p className="text-red-400">Deletes: {d.deletes}</p>
+                                                        <p className="text-purple-400">System Logs: {d.systemLogs}</p>
+                                                    </div>
+
+                                                    <div className="w-full bg-white/5 rounded-t flex flex-col justify-end overflow-hidden" style={{ height: `${Math.max(heightPct, 12)}%` }}>
+                                                        <div style={{ height: `${(d.inserts / total) * 100}%` }} className="bg-emerald-500 w-full" />
+                                                        <div style={{ height: `${(d.updates / total) * 100}%` }} className="bg-cyan-500 w-full" />
+                                                        <div style={{ height: `${(d.deletes / total) * 100}%` }} className="bg-red-500 w-full" />
+                                                        <div style={{ height: `${(d.systemLogs / total) * 100}%` }} className="bg-purple-500 w-full" />
+                                                    </div>
+                                                    {index % (barGraphMode === 'hourly' ? 3 : 4) === 0 ? (
+                                                        <span className="text-[10px] text-gray-400 font-mono truncate">{label}</span>
+                                                    ) : (
+                                                        <span className="text-[10px] text-transparent">.</span>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Real MongoDB Collection Breakdown Table */}
+                            <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                                        <Database className="w-5 h-5 text-[var(--primary)]" />
+                                        ข้อมูลขนาดตารางในระบบ MongoDB ที่เปิดใช้อยู่จริง (Database Collections Breakdown)
+                                    </h3>
+                                    <span className="text-xs text-gray-400">สำรวจจาก Database 127.0.0.1 (webshopmc)</span>
+                                </div>
+
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm text-gray-300">
+                                        <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
+                                            <tr>
+                                                <th className="px-4 py-3">ชื่อ Collection ในระบบ MongoDB</th>
+                                                <th className="px-4 py-3">จำนวนเอกสาร (Documents)</th>
+                                                <th className="px-4 py-3">ขนาดข้อมูล (Estimated Size KB)</th>
+                                                <th className="px-4 py-3 text-right">ขนาดข้อมูล (MB)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5 font-mono text-xs">
+                                            {collections.map((col, idx) => (
+                                                <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                                    <td className="px-4 py-3 font-bold text-white flex items-center gap-2">
+                                                        <div className="w-2 h-2 rounded-full bg-[var(--primary)]" />
+                                                        {col.name}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-emerald-400 font-bold">
+                                                        {col.count.toLocaleString()} รายการ
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-300">
+                                                        {col.sizeKB} KB
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right font-bold text-purple-400">
+                                                        {col.sizeMB} MB
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TAB 2: POINT-IN-TIME RESTORE & BACKTRACK PAGE */}
+                    {activeTab === 'restore' && (
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-6">
+                            <div className="border-b border-white/10 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                <div>
+                                    <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                        <RotateCcw className="w-6 h-6 text-[var(--primary)]" />
+                                        หน้าสำหรับการย้อนหลังข้อมูลฐานข้อมูล (Point-in-Time Restore & Backtrack Timeline)
+                                    </h3>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        เลือกเวอร์ชัน Snapshot หรือจุดสำรองข้อมูลรายวันเพื่อทำการกู้คืนและย้อนกลับระบบในคลิกเดียว (1-Click Restore)
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
+                                    disabled={triggering}
+                                    className="px-4 py-2 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl text-xs shadow flex items-center gap-1.5"
+                                >
+                                    <Zap className="w-4 h-4" /> สร้าง Snapshot ประจำวันทันที
+                                </button>
+                            </div>
+
+                            {/* Timeline Restore Points */}
+                            <div className="space-y-4">
+                                {jobs.map((job, idx) => (
+                                    <div
+                                        key={job.jobId}
+                                        className="bg-[#121212] border border-white/10 hover:border-[var(--primary)]/40 p-5 rounded-2xl transition-all shadow-lg flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6"
+                                    >
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="bg-[var(--primary)]/20 text-[var(--primary)] border border-[var(--primary)]/40 px-2.5 py-0.5 rounded text-xs font-bold">
+                                                    Snapshot #{jobs.length - idx}
+                                                </span>
+                                                <span className="bg-white/10 text-white px-2.5 py-0.5 rounded text-xs font-bold uppercase">
+                                                    {job.gfsLevel}
+                                                </span>
+                                                {job.isImmutable && (
+                                                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs px-2.5 py-0.5 rounded font-bold flex items-center gap-1">
+                                                        <Lock className="w-3 h-3" /> WORM Protected
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <h4 className="text-lg font-bold text-white">{job.name}</h4>
+                                            
+                                            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400 font-mono">
+                                                <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-cyan-400" /> {new Date(job.createdAt).toLocaleString('th-TH')}</span>
+                                                <span>ขนาด: <strong className="text-white">{(job.sizeBytes / (1024 * 1024)).toFixed(1)} MB</strong></span>
+                                                <span>Dedup: <strong className="text-purple-400">{job.dedupRatio}x</strong></span>
+                                                <span>Checksum: <strong className="text-gray-500 truncate max-w-[100px]">{job.checksum}</strong></span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => handleRestoreBackup(job.jobId, job.name)}
+                                                disabled={restoringJobId === job.jobId}
+                                                className="px-5 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl font-bold text-xs transition-all shadow-lg flex items-center gap-2 disabled:opacity-50"
+                                            >
+                                                <RotateCcw className="w-4 h-4" />
+                                                {restoringJobId === job.jobId ? 'กำลังกู้คืนข้อมูล...' : 'ย้อนกลับไปยังเวอร์ชันนี้ (1-Click Restore)'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TAB 3: SETTINGS (AWS S3 & STORAGE PROVIDER) */}
+                    {activeTab === 'settings' && (
+                        <form onSubmit={(e) => { e.preventDefault(); handleSaveSettings(); }} className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-6 max-w-4xl mx-auto">
+                            <div className="border-b border-white/10 pb-4">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <Settings className="w-6 h-6 text-[var(--primary)]" />
+                                    ตั้งค่าการเชื่อมต่อ S3 / Cloud Storage Provider จริง
+                                </h3>
+                                <p className="text-xs text-gray-400 mt-1">
+                                    กรอกข้อมูลบัญชี AWS S3 / Cloud Provider ของคุณ เพื่อให้ระบบอัปโหลดไฟล์สำรองข้อมูลไปยัง Cloud Vault จริง
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                                {/* Storage Provider Selection */}
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-semibold text-gray-300 mb-2">เลือกประเภทผู้ให้บริการ Storage (Storage Provider)</label>
+                                    <select
+                                        value={settingForm.provider}
+                                        onChange={(e) => setSettingForm({ ...settingForm, provider: e.target.value as typeof settingForm.provider })}
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                    >
+                                        <option value="aws_s3">Amazon Web Services (AWS S3 Glacier WORM Vault)</option>
+                                        <option value="custom_s3">Custom MinIO / S3 Compatible Object Storage</option>
+                                        <option value="azure_blob">Microsoft Azure Blob Storage</option>
+                                        <option value="local">Local Server Storage Only (เก็บเฉพาะในดิสก์เครื่อง)</option>
+                                    </select>
+                                </div>
+
+                                {/* AWS Access Key ID */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Access Key ID</label>
+                                    <input
+                                        type="text"
+                                        value={settingForm.awsAccessKeyId}
+                                        onChange={(e) => setSettingForm({ ...settingForm, awsAccessKeyId: e.target.value })}
+                                        placeholder="AKIAIOSFODNN7EXAMPLE"
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                    />
+                                </div>
+
+                                {/* AWS Secret Access Key */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Secret Access Key</label>
+                                    <input
+                                        type="password"
+                                        value={settingForm.awsSecretAccessKey}
+                                        onChange={(e) => setSettingForm({ ...settingForm, awsSecretAccessKey: e.target.value })}
+                                        placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                    />
+                                </div>
+
+                                {/* AWS Region */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Region</label>
+                                    <input
+                                        type="text"
+                                        value={settingForm.awsRegion}
+                                        onChange={(e) => setSettingForm({ ...settingForm, awsRegion: e.target.value })}
+                                        placeholder="ap-southeast-1 (Singapore)"
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                    />
+                                </div>
+
+                                {/* S3 Bucket Name */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-300 mb-1">AWS S3 Bucket Name</label>
+                                    <input
+                                        type="text"
+                                        value={settingForm.s3BucketName}
+                                        onChange={(e) => setSettingForm({ ...settingForm, s3BucketName: e.target.value })}
+                                        placeholder="mcwebshop-backup-vault-prod"
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                    />
+                                </div>
+
+                                {/* WORM Lock Retention Days */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-300 mb-1">WORM Lock Duration (จำนวนวันที่ล็อกห้ามลบ)</label>
+                                    <input
+                                        type="number"
+                                        value={settingForm.wormRetentionDays}
+                                        onChange={(e) => setSettingForm({ ...settingForm, wormRetentionDays: parseInt(e.target.value) || 30 })}
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                        min={1}
+                                    />
+                                </div>
+
+                                {/* Local Backup Path */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-300 mb-1">Local Backup Folder Path (โฟลเดอร์เก็บสำรองในเครื่อง)</label>
+                                    <input
+                                        type="text"
+                                        value={settingForm.localBackupDirectory}
+                                        onChange={(e) => setSettingForm({ ...settingForm, localBackupDirectory: e.target.value })}
+                                        placeholder="./backups"
+                                        className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-white/10 flex justify-end">
+                                <button
+                                    type="submit"
+                                    disabled={savingSettings}
+                                    className="px-6 py-3 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 text-sm disabled:opacity-50"
+                                >
+                                    <Save className="w-4 h-4" />
+                                    {savingSettings ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า S3 & Storage'}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+
+                    {/* TAB 4: JOBS & SNAPSHOTS */}
+                    {activeTab === 'jobs' && (
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white">รายการ Snapshot & Backup Jobs ทั้งหมด</h3>
+                                    <p className="text-xs text-gray-400">รองรับ Copy-on-Write (CoW), App-Consistent Snapshots และ Synthetic Full Merging</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
+                                        disabled={triggering}
+                                        className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                                    >
+                                        <Zap className="w-3.5 h-3.5" /> App-Consistent Snapshot
                                     </button>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
-            {/* TAB 3: SETTINGS (AWS S3 & STORAGE PROVIDER) */}
-            {activeTab === 'settings' && (
-                <form onSubmit={handleSaveSettings} className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-6 max-w-4xl mx-auto">
-                    <div className="border-b border-white/10 pb-4">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                            <Settings className="w-6 h-6 text-[var(--primary)]" />
-                            ตั้งค่าการเชื่อมต่อ S3 / Cloud Storage Provider จริง
-                        </h3>
-                        <p className="text-xs text-gray-400 mt-1">
-                            กรอกข้อมูลบัญชี AWS S3 / Cloud Provider ของคุณ เพื่อให้ระบบอัปโหลดไฟล์สำรองข้อมูลไปยัง Cloud Vault จริง
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                        {/* Storage Provider Selection */}
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-semibold text-gray-300 mb-2">เลือกประเภทผู้ให้บริการ Storage (Storage Provider)</label>
-                            <select
-                                value={settingForm.provider}
-                                onChange={(e) => setSettingForm({ ...settingForm, provider: e.target.value as typeof settingForm.provider })}
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                            >
-                                <option value="aws_s3">Amazon Web Services (AWS S3 Glacier WORM Vault)</option>
-                                <option value="custom_s3">Custom MinIO / S3 Compatible Object Storage</option>
-                                <option value="azure_blob">Microsoft Azure Blob Storage</option>
-                                <option value="local">Local Server Storage Only (เก็บเฉพาะในดิสก์เครื่อง)</option>
-                            </select>
-                        </div>
-
-                        {/* AWS Access Key ID */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Access Key ID</label>
-                            <input
-                                type="text"
-                                value={settingForm.awsAccessKeyId}
-                                onChange={(e) => setSettingForm({ ...settingForm, awsAccessKeyId: e.target.value })}
-                                placeholder="AKIAIOSFODNN7EXAMPLE"
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                            />
-                        </div>
-
-                        {/* AWS Secret Access Key */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Secret Access Key</label>
-                            <input
-                                type="password"
-                                value={settingForm.awsSecretAccessKey}
-                                onChange={(e) => setSettingForm({ ...settingForm, awsSecretAccessKey: e.target.value })}
-                                placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                            />
-                        </div>
-
-                        {/* AWS Region */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS Region</label>
-                            <input
-                                type="text"
-                                value={settingForm.awsRegion}
-                                onChange={(e) => setSettingForm({ ...settingForm, awsRegion: e.target.value })}
-                                placeholder="ap-southeast-1 (Singapore)"
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                            />
-                        </div>
-
-                        {/* S3 Bucket Name */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-300 mb-1">AWS S3 Bucket Name</label>
-                            <input
-                                type="text"
-                                value={settingForm.s3BucketName}
-                                onChange={(e) => setSettingForm({ ...settingForm, s3BucketName: e.target.value })}
-                                placeholder="mcwebshop-backup-vault-prod"
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                            />
-                        </div>
-
-                        {/* WORM Lock Retention Days */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-300 mb-1">WORM Lock Duration (จำนวนวันที่ล็อกห้ามลบ)</label>
-                            <input
-                                type="number"
-                                value={settingForm.wormRetentionDays}
-                                onChange={(e) => setSettingForm({ ...settingForm, wormRetentionDays: parseInt(e.target.value) || 30 })}
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                                min={1}
-                            />
-                        </div>
-
-                        {/* Local Backup Path */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-300 mb-1">Local Backup Folder Path (โฟลเดอร์เก็บสำรองในเครื่อง)</label>
-                            <input
-                                type="text"
-                                value={settingForm.localBackupDirectory}
-                                onChange={(e) => setSettingForm({ ...settingForm, localBackupDirectory: e.target.value })}
-                                placeholder="./backups"
-                                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white outline-none focus:border-[var(--primary)]"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-white/10 flex justify-end">
-                        <button
-                            type="submit"
-                            disabled={savingSettings}
-                            className="px-6 py-3 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-xl transition-all shadow-lg flex items-center gap-2 text-sm disabled:opacity-50"
-                        >
-                            <Save className="w-4 h-4" />
-                            {savingSettings ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า S3 & Storage'}
-                        </button>
-                    </div>
-                </form>
-            )}
-
-            {/* TAB 4: JOBS & SNAPSHOTS */}
-            {activeTab === 'jobs' && (
-                <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-4">
-                        <div>
-                            <h3 className="text-lg font-bold text-white">รายการ Snapshot & Backup Jobs ทั้งหมด</h3>
-                            <p className="text-xs text-gray-400">รองรับ Copy-on-Write (CoW), App-Consistent Snapshots และ Synthetic Full Merging</p>
-                        </div>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => handleTriggerBackup('snapshot', 'app_consistent')}
-                                disabled={triggering}
-                                className="px-3.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
-                            >
-                                <Zap className="w-3.5 h-3.5" /> App-Consistent Snapshot
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm text-gray-300">
-                            <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
-                                <tr>
-                                    <th className="px-4 py-3">Job ID / ชื่อไฟล์สำรอง</th>
-                                    <th className="px-4 py-3">ประเภท & Consistency</th>
-                                    <th className="px-4 py-3">ขนาด / Dedup</th>
-                                    <th className="px-4 py-3">Storage Tier</th>
-                                    <th className="px-4 py-3">WORM Immutability</th>
-                                    <th className="px-4 py-3">SureBackup Verify</th>
-                                    <th className="px-4 py-3 text-right">การจัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {jobs.map(job => (
-                                    <tr key={job.jobId} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-4 py-3 font-semibold text-white">
-                                            <div className="flex items-center gap-2">
-                                                <Database className="w-4 h-4 text-[var(--primary)]" />
-                                                <div>
-                                                    <p>{job.name}</p>
-                                                    <p className="text-[11px] text-gray-500 font-mono">{job.jobId} • {new Date(job.createdAt).toLocaleString('th-TH')}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="space-y-1">
-                                                <span className="bg-white/10 px-2 py-0.5 rounded text-xs font-bold uppercase">
-                                                    {job.type}
-                                                </span>
-                                                <p className="text-[11px] text-emerald-400">
-                                                    {job.consistency === 'app_consistent' ? 'App-Consistent' : 'Crash-Consistent'}
-                                                </p>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <p className="font-bold text-white">{(job.sizeBytes / (1024 * 1024)).toFixed(1)} MB</p>
-                                            <p className="text-[11px] text-purple-400">{job.dedupRatio}x Deduplicated</p>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                                                {job.storageTier.toUpperCase()}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {job.isImmutable ? (
-                                                <div className="flex items-center gap-1 text-xs text-amber-400 font-bold bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
-                                                    <Lock className="w-3.5 h-3.5" /> WORM Locked
-                                                </div>
-                                            ) : (
-                                                <span className="text-xs text-gray-500">Unlocked</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {job.verificationStatus?.bootTestPassed ? (
-                                                <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                                                    <CheckCircle className="w-3.5 h-3.5" /> Boot Verified ({job.verificationStatus.heartbeatMs}ms)
-                                                </span>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleVerifySandbox(job.jobId)}
-                                                    disabled={verifyingJobId === job.jobId}
-                                                    className="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs"
-                                                >
-                                                    {verifyingJobId === job.jobId ? 'กำลังทดสอบ...' : 'ทดสอบ Boot'}
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <button
-                                                onClick={() => handleRestoreBackup(job.jobId, job.name)}
-                                                className="px-3 py-1.5 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-lg text-xs transition-all shadow"
-                                            >
-                                                Instant Restore
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 5: WORM SECURITY & AIR-GAP */}
-            {activeTab === 'worm' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                            <Lock className="w-5 h-5 text-amber-400" />
-                            Ransomware Shield & WORM Immutability (Write-Once-Read-Many)
-                        </h3>
-                        <p className="text-xs text-gray-300 leading-relaxed">
-                            ระบบล็อกไฟล์สำรองข้อมูล WORM ป้องกันการแก้ไข ลบ หรือเขียนทับโดยเด็ดขาด 
-                            <strong className="text-amber-400 ml-1">แม้อยู่ในสิทธิ์ Root / Admin</strong> จนกว่าจะครบกำหนดเวลา WORM Expiration
-                        </p>
-
-                        <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 text-xs">
-                            <div className="flex items-center justify-between text-amber-300 font-bold">
-                                <span>สถานะ WORM Active Vault:</span>
-                                <span>PROTECTED (100% Locked)</span>
-                            </div>
-                            <p className="text-gray-400">อัลกอริทึม SHA-256 HMAC ล็อกระดับฮาร์ดแวร์ + S3 Object Lock Governance Mode</p>
-                        </div>
-                    </div>
-
-                    <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                            <Server className="w-5 h-5 text-cyan-400" />
-                            Air-Gapped Isolation & Encryption
-                        </h3>
-                        <div className="space-y-3 text-xs text-gray-300">
-                            <div className="flex justify-between bg-white/5 p-3 rounded-xl border border-white/5">
-                                <span>Logical Air-Gap Status:</span>
-                                <span className="text-emerald-400 font-bold">ISOLATED NETWORK (Air-Gapped Active)</span>
-                            </div>
-                            <div className="flex justify-between bg-white/5 p-3 rounded-xl border border-white/5">
-                                <span>Encryption-in-Transit:</span>
-                                <span className="text-cyan-400 font-bold">TLS 1.3 / SSH Tunnel</span>
-                            </div>
-                            <div className="flex justify-between bg-white/5 p-3 rounded-xl border border-white/5">
-                                <span>Encryption-at-Rest:</span>
-                                <span className="text-purple-400 font-bold">AES-256-GCM Hardware Encrypted</span>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm text-gray-300">
+                                    <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
+                                        <tr>
+                                            <th className="px-4 py-3">Job ID / ชื่อไฟล์สำรอง</th>
+                                            <th className="px-4 py-3">ประเภท & Consistency</th>
+                                            <th className="px-4 py-3">ขนาด / Dedup</th>
+                                            <th className="px-4 py-3">Storage Tier</th>
+                                            <th className="px-4 py-3">WORM Immutability</th>
+                                            <th className="px-4 py-3">SureBackup Verify</th>
+                                            <th className="px-4 py-3 text-right">การจัดการ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {jobs.map(job => (
+                                            <tr key={job.jobId} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-4 py-3 font-semibold text-white">
+                                                    <div className="flex items-center gap-2">
+                                                        <Database className="w-4 h-4 text-[var(--primary)]" />
+                                                        <div>
+                                                            <p>{job.name}</p>
+                                                            <p className="text-[11px] text-gray-500 font-mono">{job.jobId} • {new Date(job.createdAt).toLocaleString('th-TH')}</p>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="space-y-1">
+                                                        <span className="bg-white/10 px-2 py-0.5 rounded text-xs font-bold uppercase">
+                                                            {job.type}
+                                                        </span>
+                                                        <p className="text-[11px] text-emerald-400">
+                                                            {job.consistency === 'app_consistent' ? 'App-Consistent' : 'Crash-Consistent'}
+                                                        </p>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <p className="font-bold text-white">{(job.sizeBytes / (1024 * 1024)).toFixed(1)} MB</p>
+                                                    <p className="text-[11px] text-purple-400">{job.dedupRatio}x Deduplicated</p>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                                        {job.storageTier.toUpperCase()}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {job.isImmutable ? (
+                                                        <div className="flex items-center gap-1 text-xs text-amber-400 font-bold bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                                                            <Lock className="w-3.5 h-3.5" /> WORM Locked
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-xs text-gray-500">Unlocked</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    {job.verificationStatus?.bootTestPassed ? (
+                                                        <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                                                            <CheckCircle className="w-3.5 h-3.5" /> Boot Verified ({job.verificationStatus.heartbeatMs}ms)
+                                                        </span>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleVerifySandbox(job.jobId)}
+                                                            disabled={verifyingJobId === job.jobId}
+                                                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-white rounded text-xs"
+                                                        >
+                                                            {verifyingJobId === job.jobId ? 'กำลังทดสอบ...' : 'ทดสอบ Boot'}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        onClick={() => handleRestoreBackup(job.jobId, job.name)}
+                                                        className="px-3 py-1.5 bg-[var(--primary)] hover:brightness-110 text-black font-bold rounded-lg text-xs transition-all shadow"
+                                                    >
+                                                        Instant Restore
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-                    </div>
-                </div>
-            )}
+                    )}
 
-            {/* TAB 6: QUORUM APPROVALS */}
-            {activeTab === 'quorum' && (
-                <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                        <div>
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Key className="w-5 h-5 text-amber-400" />
-                                Quorum Multi-Person Authorization Queue
-                            </h3>
-                            <p className="text-xs text-gray-400">การสั่งลบ Backup หรือเปลี่ยนนโยบายสำคัญ ต้องใช้คำอนุมัติจาก Admin อย่างน้อย 2 คนขึ้นไป</p>
-                        </div>
-                    </div>
+                    {/* TAB 5: WORM SECURITY & AIR-GAP */}
+                    {activeTab === 'worm' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <Lock className="w-5 h-5 text-amber-400" />
+                                    Ransomware Shield & WORM Immutability (Write-Once-Read-Many)
+                                </h3>
+                                <p className="text-xs text-gray-300 leading-relaxed">
+                                    ระบบล็อกไฟล์สำรองข้อมูล WORM ป้องกันการแก้ไข ลบ หรือเขียนทับโดยเด็ดขาด 
+                                    <strong className="text-amber-400 ml-1">แม้อยู่ในสิทธิ์ Root / Admin</strong> จนกว่าจะครบกำหนดเวลา WORM Expiration
+                                </p>
 
-                    <div className="space-y-3">
-                        {quorumRequests.map(req => (
-                            <div key={req.requestId} className="bg-white/5 border border-white/10 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="bg-red-500/20 text-red-400 border border-red-500/40 text-xs px-2 py-0.5 rounded font-bold uppercase">
-                                            {req.actionType}
-                                        </span>
-                                        <span className="text-xs text-gray-400 font-mono">{req.requestId}</span>
+                                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 text-xs">
+                                    <div className="flex items-center justify-between text-amber-300 font-bold">
+                                        <span>สถานะ WORM Active Vault:</span>
+                                        <span>PROTECTED (100% Locked)</span>
                                     </div>
-                                    <p className="text-sm font-bold text-white">ขออนุมัติสำหรับ resource: {req.targetResource}</p>
-                                    <p className="text-xs text-gray-400">ผู้ร้องขอ: <span className="text-gray-200">{req.requestedBy}</span> | เหตุผล: {req.reason}</p>
-                                    <p className="text-[11px] text-amber-400">การอนุมัติ: {req.approvedBy.length} / {req.requiredApprovals} คนเรียบร้อยแล้ว</p>
-                                </div>
-
-                                <div>
-                                    {req.status === 'pending' ? (
-                                        <button
-                                            onClick={() => handleApproveQuorum(req.requestId)}
-                                            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition-all shadow-lg flex items-center gap-1.5"
-                                        >
-                                            <Check className="w-4 h-4" /> ลงลายมือชื่ออนุมัติ (Multi-Person Sign)
-                                        </button>
-                                    ) : (
-                                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs px-3 py-1.5 rounded-xl font-bold">
-                                            อนุมัติสำเร็จแล้ว (APPROVED)
-                                        </span>
-                                    )}
+                                    <p className="text-gray-400">อัลกอริทึม SHA-256 HMAC ล็อกระดับฮาร์ดแวร์ + S3 Object Lock Governance Mode</p>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                </div>
-            )}
 
-            {/* TAB 7: SUREBACKUP SANDBOX */}
-            {activeTab === 'sandbox' && (
-                <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <Cpu className="w-5 h-5 text-cyan-400" />
-                        Automated Sandbox Verification (SureBackup Testing)
-                    </h3>
-                    <p className="text-xs text-gray-300 leading-relaxed">
-                        ระบบทำการดึงไฟล์สำรองข้อมูลไปทดสอบ Boot Up บนเครือข่าย Isolated Sandbox อัตโนมัติ 
-                        พร้อมตรวจสอบ OS Boot, DB Integrity Check และ Service Heartbeat
-                    </p>
+                            <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <Server className="w-5 h-5 text-cyan-400" />
+                                    Air-Gapped Isolation & Encryption
+                                </h3>
+                                <div className="space-y-3 text-xs text-gray-300">
+                                    <div className="flex justify-between bg-white/5 p-3 rounded-xl border border-white/10">
+                                        <span>Logical Air-Gap Status:</span>
+                                        <span className="text-emerald-400 font-bold">ISOLATED NETWORK (Air-Gapped Active)</span>
+                                    </div>
+                                    <div className="flex justify-between bg-white/5 p-3 rounded-xl border border-white/10">
+                                        <span>Encryption-in-Transit:</span>
+                                        <span className="text-cyan-400 font-bold">TLS 1.3 / SSH Tunnel</span>
+                                    </div>
+                                    <div className="flex justify-between bg-white/5 p-3 rounded-xl border border-white/10">
+                                        <span>Encryption-at-Rest:</span>
+                                        <span className="text-purple-400 font-bold">AES-256-GCM Hardware Encrypted</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
-                            <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                            <p className="text-sm font-bold text-white">OS Boot Up Test</p>
-                            <p className="text-xs text-emerald-400 mt-1">100% Passed</p>
-                        </div>
-                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
-                            <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                            <p className="text-sm font-bold text-white">Database Consistency</p>
-                            <p className="text-xs text-emerald-400 mt-1">ACID Verified Clean</p>
-                        </div>
-                        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
-                            <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                            <p className="text-sm font-bold text-white">Heartbeat & RPO Check</p>
-                            <p className="text-xs text-emerald-400 mt-1">Latency 32ms</p>
-                        </div>
-                    </div>
-                </div>
-            )}
+                    {/* TAB 6: QUORUM APPROVALS */}
+                    {activeTab === 'quorum' && (
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <Key className="w-5 h-5 text-amber-400" />
+                                        Quorum Multi-Person Authorization Queue
+                                    </h3>
+                                    <p className="text-xs text-gray-400">การสั่งลบ Backup หรือเปลี่ยนนโยบายสำคัญ ต้องใช้คำอนุมัติจาก Admin อย่างน้อย 2 คนขึ้นไป</p>
+                                </div>
+                            </div>
 
-            {/* TAB 8: IMMUTABLE AUDIT TRAIL */}
-            {activeTab === 'audit' && (
-                <div className="bg-[#1e1e1e] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
-                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
-                        <div>
-                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                <FileText className="w-5 h-5 text-[var(--primary)]" />
-                                Cryptographic Immutable Audit Trail
-                            </h3>
-                            <p className="text-xs text-gray-400">บันทึกทุกกิจกรรมและคำสั่งของผู้ใช้งานสิทธิ์ Root / Admin ไม่สามารถลบหรือแก้ไขได้</p>
-                        </div>
-                    </div>
+                            <div className="space-y-3">
+                                {quorumRequests.map(req => (
+                                    <div key={req.requestId} className="bg-white/5 border border-white/10 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="bg-red-500/20 text-red-400 border border-red-500/40 text-xs px-2 py-0.5 rounded font-bold uppercase">
+                                                    {req.actionType}
+                                                </span>
+                                                <span className="text-xs text-gray-400 font-mono">{req.requestId}</span>
+                                            </div>
+                                            <p className="text-sm font-bold text-white">ขออนุมัติสำหรับ resource: {req.targetResource}</p>
+                                            <p className="text-xs text-gray-400">ผู้ร้องขอ: <span className="text-gray-200">{req.requestedBy}</span> | เหตุผล: {req.reason}</p>
+                                            <p className="text-[11px] text-amber-400">การอนุมัติ: {req.approvedBy.length} / {req.requiredApprovals} คนเรียบร้อยแล้ว</p>
+                                        </div>
 
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm text-gray-300">
-                            <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
-                                <tr>
-                                    <th className="px-4 py-3">Log ID / เวลา</th>
-                                    <th className="px-4 py-3">ผู้ใช้งาน (Actor) & สิทธิ์</th>
-                                    <th className="px-4 py-3">การกระทำ (Action)</th>
-                                    <th className="px-4 py-3">Resource Target</th>
-                                    <th className="px-4 py-3">IP Address</th>
-                                    <th className="px-4 py-3">SHA-256 Checksum Hash</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5 font-mono text-xs">
-                                {auditLogs.map(log => (
-                                    <tr key={log.logId} className="hover:bg-white/5 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <p className="font-bold text-white">{log.logId}</p>
-                                            <p className="text-gray-500 text-[10px]">{new Date(log.timestamp).toLocaleString('th-TH')}</p>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <p className="font-bold text-amber-400">{log.actor}</p>
-                                            <span className="text-[10px] text-gray-400">{log.role}</span>
-                                        </td>
-                                        <td className="px-4 py-3 font-semibold text-emerald-400">
-                                            {log.action}
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-300">
-                                            {log.resource}
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-400">
-                                            {log.ipAddress}
-                                        </td>
-                                        <td className="px-4 py-3 text-[10px] text-purple-400 truncate max-w-[150px]" title={log.checksumHash}>
-                                            {log.checksumHash}
-                                        </td>
-                                    </tr>
+                                        <div>
+                                            {req.status === 'pending' ? (
+                                                <button
+                                                    onClick={() => handleApproveQuorum(req.requestId)}
+                                                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-xs transition-all shadow-lg flex items-center gap-1.5"
+                                                >
+                                                    <Check className="w-4 h-4" /> ลงลายมือชื่ออนุมัติ (Multi-Person Sign)
+                                                </button>
+                                            ) : (
+                                                <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-xs px-3 py-1.5 rounded-xl font-bold">
+                                                    อนุมัติสำเร็จแล้ว (APPROVED)
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
                                 ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TAB 7: SUREBACKUP SANDBOX */}
+                    {activeTab === 'sandbox' && (
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Cpu className="w-5 h-5 text-cyan-400" />
+                                Automated Sandbox Verification (SureBackup Testing)
+                            </h3>
+                            <p className="text-xs text-gray-300 leading-relaxed">
+                                ระบบทำการดึงไฟล์สำรองข้อมูลไปทดสอบ Boot Up บนเครือข่าย Isolated Sandbox อัตโนมัติ 
+                                พร้อมตรวจสอบ OS Boot, DB Integrity Check และ Service Heartbeat
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
+                                    <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-white">OS Boot Up Test</p>
+                                    <p className="text-xs text-emerald-400 mt-1">100% Passed</p>
+                                </div>
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
+                                    <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-white">Database Consistency</p>
+                                    <p className="text-xs text-emerald-400 mt-1">ACID Verified Clean</p>
+                                </div>
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
+                                    <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-white">Heartbeat & RPO Check</p>
+                                    <p className="text-xs text-emerald-400 mt-1">Latency 32ms</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* TAB 8: IMMUTABLE AUDIT TRAIL */}
+                    {activeTab === 'audit' && (
+                        <div className="bg-[#1e1e1e] border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
+                            <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                        <FileText className="w-5 h-5 text-[var(--primary)]" />
+                                        Cryptographic Immutable Audit Trail
+                                    </h3>
+                                    <p className="text-xs text-gray-400">บันทึกทุกกิจกรรมและคำสั่งของผู้ใช้งานสิทธิ์ Root / Admin ไม่สามารถลบหรือแก้ไขได้</p>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm text-gray-300">
+                                    <thead className="bg-[#121212] text-xs text-gray-400 uppercase border-b border-white/10">
+                                        <tr>
+                                            <th className="px-4 py-3">Log ID / เวลา</th>
+                                            <th className="px-4 py-3">ผู้ใช้งาน (Actor) & สิทธิ์</th>
+                                            <th className="px-4 py-3">การกระทำ (Action)</th>
+                                            <th className="px-4 py-3">Resource Target</th>
+                                            <th className="px-4 py-3">IP Address</th>
+                                            <th className="px-4 py-3">SHA-256 Checksum Hash</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 font-mono text-xs">
+                                        {auditLogs.map(log => (
+                                            <tr key={log.logId} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <p className="font-bold text-white">{log.logId}</p>
+                                                    <p className="text-gray-500 text-[10px]">{new Date(log.timestamp).toLocaleString('th-TH')}</p>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <p className="font-bold text-amber-400">{log.actor}</p>
+                                                    <span className="text-[10px] text-gray-400">{log.role}</span>
+                                                </td>
+                                                <td className="px-4 py-3 font-semibold text-emerald-400">
+                                                    {log.action}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-300">
+                                                    {log.resource}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-400">
+                                                    {log.ipAddress}
+                                                </td>
+                                                <td className="px-4 py-3 text-[10px] text-purple-400 truncate max-w-[150px]" title={log.checksumHash}>
+                                                    {log.checksumHash}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
