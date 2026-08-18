@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { getUsers, deleteUser, toggleBan, updatePassword, updateName, updatePoints, getTopDonors } = require('../controllers/userController');
+const { getUsers, getPlayerDashboardStats, deleteUser, toggleBan, updatePassword, updateName, updatePoints, getTopDonors } = require('../controllers/userController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
+router.get('/dashboard-stats', protect, admin, getPlayerDashboardStats);
 router.get('/top-donors', getTopDonors);
 router.get('/', protect, admin, getUsers);
 router.delete('/:id', protect, admin, deleteUser);

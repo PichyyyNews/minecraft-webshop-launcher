@@ -75,6 +75,11 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
+    user.lastLogin = new Date();
+    user.lastActive = new Date();
+    user.lastIp = req.ip || req.connection?.remoteAddress || '127.0.0.1';
+    await user.save();
+
     sendTokenResponse(user, 200, res);
   } catch (err) {
     res.status(401).json({ success: false, message: err.message });
